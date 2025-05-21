@@ -1,5 +1,5 @@
-use super::Ty;
-use super::Constant;
+use super::{Constant,Ty};
+use std::fmt::*;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Value {
@@ -14,6 +14,14 @@ impl Value {
     pub fn ty(&self) -> &Ty {
         match self {
             Self::Constant(c) => c.ty(),
+        }
+    }
+}
+
+impl Display for Value {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match self {
+            Self::Constant(c) => write!(f, "{}", c),
         }
     }
 }

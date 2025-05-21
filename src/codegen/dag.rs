@@ -124,12 +124,7 @@ impl <I: ISA> ToString for Node<I> {
         match &self.payload {
             NodePayload::None => (),
             NodePayload::Constant(value) => {
-                let value_str = match value.kind {
-                    ir::ValueKind::Immediate => match value.ty {
-                        ir::Ty::Int => format!("0x{:x}", value.data.as_int()),
-                    }
-                };
-                result.push_str(format!(" (constant = {})", value_str).as_str());
+                result.push_str(format!(" (constant = {})", value).as_str());
             }
             NodePayload::Register(reg) => result.push_str(format!(" (register = {})", reg.to_string()).as_str()),
         }
@@ -157,7 +152,7 @@ impl <I: ISA> ToString for Node<I> {
 
 pub enum NodePayload<I: ISA> {
     None,
-    Constant(ir::Value),
+    Constant(ir::Constant),
     Register(I::Register),
 }
 
@@ -183,7 +178,7 @@ impl <I: ISA> NodePayload<I> {
         }
     }
 
-    pub fn get_constant(&self) -> &ir::Value {
+    pub fn get_constant(&self) -> &ir::Constant {
         match self {
             NodePayload::Constant(value) => value,
             _ => panic!("Node payload is not a constant"),

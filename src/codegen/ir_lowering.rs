@@ -55,10 +55,7 @@ impl <'a, I: ISA> IRLowering<'a, I> {
     }
 
     fn lower_return(&mut self, value: &ir::Value) {
-        let value = match value.kind {
-            ir::ValueKind::Immediate => self.get_constant(value.clone())
-        };
-
+        let value = self.get_lowered_value(value);
         let ret = self.dag.add_generic_node(
             GenericOpcode::Ret,
             vec![
@@ -70,9 +67,14 @@ impl <'a, I: ISA> IRLowering<'a, I> {
         self.terminator_node = Some(ret);
     }
 
-    fn get_constant(&mut self, value: ir::Value) -> Value {
-        assert!(value.kind == ir::ValueKind::Immediate, "Expected immediate value");
-        let ty = self.isa.lower_type(&value.ty);
+    fn get_lowered_value(&mut self, value: &ir::Value) -> Value {
+        match value {
+            ir::Value::Constant(c) => self.get_constant(c.clone())
+        }
+    }
+
+    fn get_constant(&mut self, value: ir::Constant) -> Value {
+        let ty = self.isa.lower_type(value.ty());
         let constant = self.dag.add_generic_node_with_payload(
             GenericOpcode::Constant,
             NodePayload::Constant(value), 

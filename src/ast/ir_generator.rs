@@ -57,7 +57,7 @@ impl Visitor<'_, Option<ir::Value>> for IRGenerator {
         // FIXME: this is so, so bad. We should use some sort of binary representation of an
         //        "abstract typed value" instead of relying on Rust's integer parsing functionality
         let value: i32 = expr.span.text().parse().expect("Value of an integer literal must be a valid 32 bit signed integer");
-        let value = ir::Value::immediate_int(value);
+        let value = ir::Value::constant(ir::Constant::int(value));
         Some(value)
     }
 

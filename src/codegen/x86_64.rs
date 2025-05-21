@@ -96,8 +96,8 @@ impl ISA {
     }
 
     // mov reg, arg
-    fn mov_reg_imm(&self, dag: &mut DAG<Self>, value: ir::Value) -> Value {
-        let ty = isa::ISA::lower_type(self, &value.ty);
+    fn mov_reg_imm(&self, dag: &mut DAG<Self>, value: ir::Constant) -> Value {
+        let ty = isa::ISA::lower_type(self, value.ty());
         let mov = dag.add_native_node_with_payload(
             Opcode::MOVri,
             NodePayload::Constant(value),

@@ -15,7 +15,7 @@ impl Value {
     pub fn ty<'a>(&'a self, bb: &'a BasicBlock) -> &'a Ty {
         match self {
             Self::Constant(c) => c.ty(),
-            Self::Instruction(instruction_ref, _name) => bb.get_instruction(*instruction_ref).ty().unwrap(),
+            Self::Instruction(instruction_ref, _name) => bb.get_instruction(*instruction_ref).ty(bb).unwrap(),
         }
     }
 }

@@ -51,6 +51,7 @@ impl <'a, I: ISA> IRLowering<'a, I> {
     fn lower_instruction(&mut self, instruction: &ir::Instruction) {
         match instruction {
             ir::Instruction::Return(value) => self.lower_return(value),
+            _ => panic!(),
         }
     }
 

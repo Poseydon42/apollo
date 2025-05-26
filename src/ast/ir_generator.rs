@@ -61,8 +61,14 @@ impl Visitor<'_, Option<ir::Value>> for IRGenerator {
         Some(value)
     }
 
-    fn visit_binary_expr(&mut self, _lhs: &'_ ast::Expr, _op: ast::BinaryOp, _rhs: &'_ ast::Expr, _expr: &'_ ast::Expr) -> Option<ir::Value> {
-        unimplemented!("Binary expressions are not yet implemented in IR generation");
+    fn visit_binary_expr(&mut self, lhs: &'_ ast::Expr, op: ast::BinaryOp, rhs: &'_ ast::Expr, _expr: &'_ ast::Expr) -> Option<ir::Value> {
+        let lhs = self.visit_expr(lhs).expect("Left-hand side of binary expression must produce a node");
+        let rhs = self.visit_expr(rhs).expect("Right-hand side of binary expression must produce a node");
+        let instruction = match op {
+            ast::BinaryOp::Add => ir::Instruction::Add(lhs, rhs),
+            ast::BinaryOp::Sub => ir::Instruction::Sub(lhs, rhs),
+        };
+        self.get_bb_mut().append_instruction(instruction).1
     }
 
     fn visit_return_stmt(&mut self, value: &'_ ast::Expr, _stmt: &'_ ast::Stmt) -> Option<ir::Value> {

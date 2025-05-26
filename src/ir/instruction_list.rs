@@ -6,7 +6,7 @@ pub(super) struct InstructionList {
     instructions: IndexList<Instruction>,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct InstructionRef(Index);
 
 impl InstructionList {

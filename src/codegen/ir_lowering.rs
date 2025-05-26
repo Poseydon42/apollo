@@ -36,7 +36,7 @@ impl <'a, I: ISA> IRLowering<'a, I> {
     }
 
     fn lower(mut self) -> IRLoweringResult<I> {
-        for instruction in self.function.code.instructions() {
+        for (_ref, instruction) in self.function.code.instructions() {
             if self.terminator_node.is_some() {
                 panic!("Cannot lower IR past a return instruction");
             }

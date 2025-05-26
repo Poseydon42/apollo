@@ -1,10 +1,12 @@
 use super::{Instruction, Value};
 use super::instruction_list::*;
+use std::collections::HashMap;
 
 #[derive(Debug)]
 pub struct BasicBlock {
     name: String,
     instructions: InstructionList,
+    values: HashMap<InstructionRef, Value>,
     next_unnamed_value_id: u32,
 }
 
@@ -13,7 +15,8 @@ impl BasicBlock {
         Self {
             name,
             instructions: InstructionList::new(),
-            next_unnamed_value_id: 0,
+            values: HashMap::new(),
+            next_unnamed_value_id: 1,
         }
     }
 
@@ -33,6 +36,10 @@ impl BasicBlock {
         self.instructions.instructions()
     }
 
+    pub fn get_value(&self, instruction_ref: InstructionRef) -> Option<Value> {
+        self.values.get(&instruction_ref).cloned()
+    }
+
     pub fn append_instruction(&mut self, instruction: Instruction) -> (InstructionRef, Option<Value>) {
         let produces_value = instruction.produces_value();
         let instruction_ref = self.instructions.append(instruction);
@@ -40,7 +47,9 @@ impl BasicBlock {
             true => {
                 let id = self.next_unnamed_value_id;
                 self.next_unnamed_value_id += 1;
-                Some(Value::Instruction(instruction_ref, format!("{}", id)))
+                let value = Value::Instruction(instruction_ref, format!("{}", id));
+                self.values.insert(instruction_ref, value.clone());
+                Some(value)
             }
             false => None,
         };

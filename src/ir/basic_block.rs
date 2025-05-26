@@ -32,7 +32,7 @@ impl BasicBlock {
         self.instructions.get_mut(instruction_ref)
     }
 
-    pub fn instructions(&self) -> impl Iterator<Item = &Instruction> {
+    pub fn instructions(&self) -> impl Iterator<Item = (InstructionRef, &Instruction)> {
         self.instructions.instructions()
     }
 

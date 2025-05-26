@@ -32,8 +32,12 @@ fn main() -> Result<(), i32> {
     let ir_generator = IRGenerator::new();
     let ir_module = ir_generator.generate(&module);
     let function = &ir_module.functions()[0];
-    for instruction in function.code.instructions() {
-        println!("{:?}", instruction);
+    for (instruction_ref, instruction) in function.code.instructions() {
+        if instruction.produces_value() {
+            println!("{} = {}", function.code.get_value(instruction_ref).unwrap(), instruction);
+        } else {
+            println!("{}", instruction);
+        }
     }
 
     println!("===== CODEGEN =====");

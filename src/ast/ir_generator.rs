@@ -69,7 +69,7 @@ impl Visitor<'_, Option<ir::Value>> for IRGenerator {
         let value = self.visit_expr(value).expect("Visited expression must produce a node");
         
         let ret = ir::Instruction::Return(value);
-        self.get_bb_mut().add_instruction(ret);
+        self.get_bb_mut().append_instruction(ret);
 
         None
     }

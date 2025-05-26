@@ -32,7 +32,7 @@ fn main() -> Result<(), i32> {
     let ir_generator = IRGenerator::new();
     let ir_module = ir_generator.generate(&module);
     let function = &ir_module.functions()[0];
-    for instruction in &function.code.instructions {
+    for instruction in function.code.instructions() {
         println!("{:?}", instruction);
     }
 

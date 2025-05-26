@@ -1,6 +1,6 @@
 use super::BasicBlock;
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct Function {
     pub name: String,
     pub code: BasicBlock,

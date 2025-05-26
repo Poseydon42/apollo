@@ -1,9 +1,10 @@
-use super::{Constant,Ty};
+use super::{BasicBlock,Constant,InstructionRef,Ty};
 use std::fmt::*;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Value {
     Constant(Constant),
+    Instruction(InstructionRef, String),
 }
 
 impl Value {
@@ -11,9 +12,10 @@ impl Value {
         Self::Constant(value)
     }
 
-    pub fn ty(&self) -> &Ty {
+    pub fn ty<'a>(&'a self, bb: &'a BasicBlock) -> &'a Ty {
         match self {
             Self::Constant(c) => c.ty(),
+            Self::Instruction(instruction_ref, _name) => bb.get_instruction(*instruction_ref).ty().unwrap(),
         }
     }
 }
@@ -22,6 +24,7 @@ impl Display for Value {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             Self::Constant(c) => write!(f, "{}", c),
+            Self::Instruction(_ref, name) => write!(f, "%{}", name),
         }
     }
 }

@@ -36,7 +36,7 @@ impl <'a, I: ISA> IRLowering<'a, I> {
     }
 
     fn lower(mut self) -> IRLoweringResult<I> {
-        for instruction in &self.function.code.instructions {
+        for instruction in self.function.code.instructions() {
             if self.terminator_node.is_some() {
                 panic!("Cannot lower IR past a return instruction");
             }
@@ -69,7 +69,8 @@ impl <'a, I: ISA> IRLowering<'a, I> {
 
     fn get_lowered_value(&mut self, value: &ir::Value) -> Value {
         match value {
-            ir::Value::Constant(c) => self.get_constant(c.clone())
+            ir::Value::Constant(c) => self.get_constant(c.clone()),
+            ir::Value::Instruction(_, _) => todo!(),
         }
     }
 

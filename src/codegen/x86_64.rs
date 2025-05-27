@@ -167,18 +167,19 @@ pub enum Opcode {
 }
 
 impl isa::NativeOpcode for Opcode {
-    fn is_output_aliased_with_input(&self, output: PortId) -> Option<PortId> {
+    fn is_input_overwritten_by_output(&self, input: PortId) -> Option<PortId> {
         match self {
             Opcode::ADDrr |
             Opcode::SUBrr => {
-                match output {
+                match input {
                     0 => Some(0),
                     _ => None,
                 }
             }
 
-            _ => None,
-        }
+            Opcode::MOVri |
+            Opcode::RET => None,
+        }   
     }
 }
 

@@ -16,35 +16,45 @@ pub fn allocate_registers<I: ISA>(dag: &DAG<I>, order: &[NodeId], isa: &I) -> Re
         println!("\tValue {} live from {} to {}", value, start, end);
     }
 
-    for (idx, instruction) in order.iter().enumerate() {
+    // NOTE: we iterate in reverse orderw and map on encountering a use since restrictions on
+    //       register classes are defined by the uses, not the defs.
+    for (idx, instruction) in order.iter().enumerate().rev() {
         let instruction = dag.get(*instruction);
         assert!(
             !instruction.is_dead() || instruction.id() == *order.last().unwrap(),
             "Dead instruction ({}) should have been removed before register allocation", instruction.to_string());
 
-        for i in 0..instruction.output_count() {
-            if !is_register_type(instruction.get_output_type(i)) {
+        for (input, value) in instruction.inputs().enumerate() {
+            if !is_register_type(dag.get_value_type(*value)) {
                 continue;
             }
 
-            let value = dag.get_value(instruction.id(), i);
-            assert!(!value_map.contains_key(&value), "Value {:?} already has a register allocated", value);
-
-            if let Some(input_id) = instruction.opcode().get_native().is_output_aliased_with_input(i) {
-                let input = instruction.get_input(input_id);
-                // If the input value is not used after this instruction and the output register is aliased with it, we can reuse it.
-                if live_ranges[&input].1 == idx {
-                    value_map.insert(value, value_map[&input]);
-                    continue;
-                }
+            if value_map.contains_key(value) {
+                let reg = value_map[value];
+                assert!(
+                    instruction.is_input_allowed_in_register(input, reg),
+                    "We assigned a register to value {} that is not allowed in input {} of instruction {}",
+                    value, input, instruction.to_string()
+                );
+                continue;
             }
 
-            let reg = free_registers.iter().filter(|reg|
-                dag.uses(value).all(|(node, port)| dag.get(*node).is_input_allowed_in_register(*port, reg))
-            ).cloned().next();
+            if let Some(output) = instruction.opcode().get_native().is_input_overwritten_by_output(input) {
+                // If the output is placed in the same register as the current input, we can assign the same register.
+                assert!(
+                    live_ranges[&value].1 == idx,
+                    "We do not yet support reusing input registers that are alised with outputs if the input is used after the instruction"
+                );
+                let output_value = instruction.get_output(output);
+                let reg = value_map[&output_value];
+                value_map.insert(*value, reg);
+                continue;
+            }
+
+            let reg = free_registers.iter().filter(|reg| instruction.is_input_allowed_in_register(input, **reg)).cloned().next();
 
             if let Some(reg) = reg {
-                value_map.insert(value, reg);
+                value_map.insert(*value, reg);
                 free_registers.remove(&reg);
             } else {
                 panic!("No free allowed register available for value {}", value);

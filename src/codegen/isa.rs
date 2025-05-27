@@ -25,7 +25,7 @@ pub trait ISA: Sized + PartialEq {
 }
 
 pub trait NativeOpcode : Copy + ToString + Eq {
-    fn is_output_aliased_with_input(&self, output: PortId) -> Option<PortId>;
+    fn is_input_overwritten_by_output(&self, input: PortId) -> Option<PortId>;
 }
 
 pub trait NativeInstruction : Copy + Debug + ToString + Eq {

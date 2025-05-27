@@ -9,6 +9,7 @@ pub enum LexemKind {
     IntegerLiteral,
 
     Fn,
+    Let,
     Return,
 
     LeftParen,
@@ -16,9 +17,11 @@ pub enum LexemKind {
     LeftBrace,
     RightBrace,
     Arrow,
+    Colon,
     Semicolon,
     Plus,
     Minus,
+    Equals,
 }
 
 #[derive(Clone, Eq, PartialEq)]
@@ -56,9 +59,11 @@ pub(super) fn is_single_char_lexem(c: char) -> Option<LexemKind> {
         ')' => Some(LexemKind::RightParen),
         '{' => Some(LexemKind::LeftBrace),
         '}' => Some(LexemKind::RightBrace),
+        ':' => Some(LexemKind::Colon),
         ';' => Some(LexemKind::Semicolon),
         '+' => Some(LexemKind::Plus),
         '-' => Some(LexemKind::Minus),
+        '=' => Some(LexemKind::Equals),
         _ => None,
     }
 }
@@ -73,6 +78,7 @@ pub(super) fn is_double_char_lexem(first: char, second: char) -> Option<LexemKin
 pub(super) fn is_keyword(identifier: &str) -> Option<LexemKind> {
     match identifier {
         "fn" => Some(LexemKind::Fn),
+        "let" => Some(LexemKind::Let),
         "return" => Some(LexemKind::Return),
         _ => None,
     }
@@ -84,15 +90,18 @@ impl Display for LexemKind {
             LexemKind::Identifier => write!(f, "Identifier"),
             LexemKind::IntegerLiteral => write!(f, "IntegerLiteral"),
             LexemKind::Fn => write!(f, "Fn"),
+            LexemKind::Let => write!(f, "Let"),
             LexemKind::Return => write!(f, "Return"),
             LexemKind::LeftParen => write!(f, "LeftParen"),
             LexemKind::RightParen => write!(f, "RightParen"),
             LexemKind::LeftBrace => write!(f, "LeftBrace"),
             LexemKind::RightBrace => write!(f, "RightBrace"),
             LexemKind::Arrow => write!(f, "Arrow"),
+            LexemKind::Colon => write!(f, "Colon"),
             LexemKind::Semicolon => write!(f, "Semicolon"),
             LexemKind::Plus => write!(f, "Plus"),
             LexemKind::Minus => write!(f, "Minus"),
+            LexemKind::Equals => write!(f, "Equals"),
         }
     }
 }

@@ -305,6 +305,10 @@ impl <I: ISA> DAG<I> {
         self.get(node).get_output(port)
     }
 
+    pub fn get_value_type(&self, value: Value) -> &OutputType<I> {
+        self.get(value.node()).get_output_type(value.port())
+    }
+
     pub fn uses(&self, value: Value) -> impl Iterator<Item = &(NodeId, PortId)> {
         let node = self.get(value.node());
         node.uses(value.port())

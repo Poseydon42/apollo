@@ -25,7 +25,7 @@ pub trait ISA: Sized + PartialEq {
 }
 
 pub trait NativeOpcode : Copy + ToString + Eq {
-
+    fn is_output_alised_with_input(&self, output: PortId) -> Option<PortId>;
 }
 
 pub trait NativeInstruction : Copy + Debug + ToString + Eq {

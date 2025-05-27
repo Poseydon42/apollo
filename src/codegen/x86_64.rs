@@ -167,7 +167,7 @@ pub enum Opcode {
 }
 
 impl isa::NativeOpcode for Opcode {
-    fn is_output_alised_with_input(&self, output: PortId) -> Option<PortId> {
+    fn is_output_aliased_with_input(&self, output: PortId) -> Option<PortId> {
         match self {
             Opcode::ADDrr |
             Opcode::SUBrr => {

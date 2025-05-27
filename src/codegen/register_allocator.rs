@@ -30,7 +30,7 @@ pub fn allocate_registers<I: ISA>(dag: &DAG<I>, order: &[NodeId], isa: &I) -> Re
             let value = dag.get_value(instruction.id(), i);
             assert!(!value_map.contains_key(&value), "Value {:?} already has a register allocated", value);
 
-            if let Some(input_id) = instruction.opcode().get_native().is_output_alised_with_input(i) {
+            if let Some(input_id) = instruction.opcode().get_native().is_output_aliased_with_input(i) {
                 let input = instruction.get_input(input_id);
                 // If the input value is not used after this instruction and the output register is aliased with it, we can reuse it.
                 if live_ranges[&input].1 == idx {

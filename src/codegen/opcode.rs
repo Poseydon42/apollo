@@ -1,4 +1,5 @@
 use super::isa::ISA;
+use std::fmt::*;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum GenericOpcode {
@@ -84,23 +85,24 @@ impl<I: ISA> Opcode<I> {
     }
 }
 
-impl<I: ISA> ToString for Opcode<I> {
-    fn to_string(&self) -> String {
+impl<I: ISA> Display for Opcode<I> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
-            Opcode::Generic(opcode) => format!("Generic{}", opcode.to_string()),
-            Opcode::Native(opcode) => format!("Native{}", opcode.to_string()),
+            Opcode::Generic(opcode) => write!(f, "Generic{}", opcode.to_string()),
+            Opcode::Native(opcode) => write!(f, "Native{}", opcode.to_string()),
         }
     }
 }
 
-impl ToString for GenericOpcode {
-    fn to_string(&self) -> String {
-        match self {
+impl Display for GenericOpcode {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        let str = match self {
             GenericOpcode::Constant => "Constant",
             GenericOpcode::Add => "Add",
             GenericOpcode::Sub => "Sub",
             GenericOpcode::Enter => "Enter",
             GenericOpcode::Ret => "Ret",
-        }.to_string()
+        };
+        write!(f, "{}", str)
     }
 }

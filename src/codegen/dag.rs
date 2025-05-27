@@ -84,6 +84,10 @@ impl <I: ISA> Node<I> {
         self.inputs[input].allowed_registers.iter().any(|allowed| allowed == reg)
     }
 
+    pub fn outputs(&self) -> impl DoubleEndedIterator<Item = Value> + use<'_, I> {
+        (0..self.output_count()).map(|port| self.get_output(port))
+    }
+
     pub fn output_count(&self) -> usize {
         self.outputs.len()
     }

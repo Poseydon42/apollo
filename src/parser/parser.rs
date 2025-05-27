@@ -74,11 +74,15 @@ impl<'a, R: diagnostic::Reporter> Parser<'a, R> {
 
     // ----- MATCHERS -----
     fn match_decl(&self) -> bool {
-        self.match_func_decl()
+        self.match_func_decl() | self.match_variable_decl()
     }
 
     fn match_func_decl(&self) -> bool {
         self.match_lexem(LexemKind::Fn)
+    }
+
+    fn match_variable_decl(&self) -> bool {
+        self.match_lexem(LexemKind::Let)
     }
 
     fn match_ty(&self) -> bool {
@@ -90,11 +94,16 @@ impl<'a, R: diagnostic::Reporter> Parser<'a, R> {
     }
 
     fn match_expr(&self) -> bool {
-        self.match_integer_literal_expr()
+        self.match_integer_literal_expr() |
+        self.match_identifier_expr()
     }
 
     fn match_integer_literal_expr(&self) -> bool {
         self.match_lexem(LexemKind::IntegerLiteral)
+    }
+
+    fn match_identifier_expr(&self) -> bool {
+        self.match_lexem(LexemKind::Identifier)
     }
 
     // ----- PARSERS -----
@@ -140,6 +149,28 @@ impl<'a, R: diagnostic::Reporter> Parser<'a, R> {
         Some(Decl::new(DeclKind::Function(func), span))
     }
 
+    fn parse_variable_decl(&mut self) -> Option<Decl> {
+        let start = self.eat(LexemKind::Let)?.span.clone();
+
+        let name = self.eat(LexemKind::Identifier)?.span.clone();
+
+        self.eat(LexemKind::Colon)?;
+        let ty = self.parse_ty()?;
+
+        self.eat(LexemKind::Equals)?;
+        let init = self.parse_expr()?;
+
+        let end = &self.eat(LexemKind::Semicolon)?.span;
+
+        let variable = VariableDecl {
+            name,
+            ty,
+            init
+        };
+        let span = start.merge_with(end);
+        Some(Decl::new(DeclKind::Variable(variable), span))
+    }
+
     fn parse_ty(&mut self) -> Option<Ty> {
         if self.match_name_ty() {
             self.parse_name_ty()
@@ -172,9 +203,16 @@ impl<'a, R: diagnostic::Reporter> Parser<'a, R> {
         Some(Expr::new(ExprKind::IntegerLiteral, literal.span.clone()))
     }
 
+    fn parse_identifier_expr(&mut self) -> Option<Expr> {
+        let identifier = self.eat(LexemKind::Identifier)?;
+        Some(Expr::new(ExprKind::VariableReference, identifier.span.clone()))
+    }
+
     fn parse_primary_expr(&mut self) -> Option<Expr> {
         if self.match_integer_literal_expr() {
             self.parse_integer_literal_expr()
+        } else if self.match_identifier_expr() {
+            self.parse_identifier_expr()
         } else {
             None
         }
@@ -183,6 +221,10 @@ impl<'a, R: diagnostic::Reporter> Parser<'a, R> {
     fn parse_stmt(&mut self) -> Option<Stmt> {
         if self.match_lexem(LexemKind::Return) {
             self.parse_return_stmt()
+        } else if self.match_variable_decl() {
+            let decl = self.parse_variable_decl()?;
+            let span = decl.span.clone();
+            Some(Stmt::new(StmtKind::Decl(decl), span))
         } else {
             None
         }

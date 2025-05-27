@@ -81,6 +81,22 @@ impl isa::ISA for ISA {
                     *ty,
                 )
             }
+
+            Opcode::ADDri |
+            Opcode::SUBri => {
+                let lhs = register_allocation.value_map
+                    .get(&instruction.get_input(0))
+                    .expect("Left-hand side register for ADDri/SUBri should have been allocated");
+                let rhs = instruction.payload().get_constant().bits_as_u64();
+                let ty = instruction.get_output_type(0).get_native();
+                Instruction::two_args(
+                    instruction.opcode().get_native(),
+                    Operand::Register(*lhs),
+                    Operand::Immediate(rhs),
+                    *ty,
+                )
+            }
+
             Opcode::RET => Instruction::no_args(instruction.opcode().get_native()),
         })
     }
@@ -109,21 +125,23 @@ impl ISA {
         let node = dag.get(instruction);
         let lhs = node.get_input(0);
         let rhs = node.get_input(1);
+        let rhs_is_constant = dag.get(rhs.node()).opcode().is_constant();
         let ty = node.get_output_type(0).get_native();
 
-        let opcode = match node.opcode().get_generic() {
-            GenericOpcode::Add => Opcode::ADDrr,
-            GenericOpcode::Sub => Opcode::SUBrr,
-            _ => panic!("Unsupported generic opcode for arithmetic operation"),
-        };
+        let opcode = Self::get_native_opcode_for_simple_arithmetic(node.opcode().get_generic(), rhs_is_constant);
 
-        let node = dag.add_native_node(
-            opcode, 
-            vec![
-                lhs,
-                rhs],
-            vec![OutputType::Native(ty.clone())]
-        );
+        let node = match rhs_is_constant {
+            true => {
+                let rhs_value = dag.get(rhs.node()).payload().get_constant().clone();
+                dag.add_native_node_with_payload(
+                    opcode,
+                    NodePayload::Constant(rhs_value),
+                    vec![lhs],
+                    vec![OutputType::Native(ty.clone())]
+                )
+            }
+            false => dag.add_native_node(opcode, vec![lhs,rhs], vec![OutputType::Native(ty.clone())])
+        };
         dag.replace_node(instruction, node);
     }
 
@@ -149,6 +167,17 @@ impl ISA {
         );
         dag.get_value(mov, 0)
     }
+
+    fn get_native_opcode_for_simple_arithmetic(opcode: GenericOpcode, is_rhs_constant: bool) -> Opcode {
+        match (opcode, is_rhs_constant) {
+            (GenericOpcode::Add, false) => Opcode::ADDrr,
+            (GenericOpcode::Add, true) => Opcode::ADDri,
+            (GenericOpcode::Sub, false) => Opcode::SUBrr,
+            (GenericOpcode::Sub, true) => Opcode::SUBri,
+
+            _ => panic!("{} is not a simple arithmetic operation", opcode),
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -159,8 +188,14 @@ pub enum Opcode {
     /// add <reg>, <reg>; (lhs, rhs) -> (value)
     ADDrr,
 
-    /// add <reg>, <reg>; (lhs, rhs) -> (value)
+    /// add <reg>, <payload constant>; (lhs) -> (value)
+    ADDri,
+
+    /// sub <reg>, <reg>; (lhs, rhs) -> (value)
     SUBrr,
+
+    /// sub <reg>, <payload constant>; (lhs) -> (value)
+    SUBri,
 
     /// ret; (ctrl, value) -> ()
     RET,
@@ -170,7 +205,9 @@ impl isa::NativeOpcode for Opcode {
     fn is_input_overwritten_by_output(&self, input: PortId) -> Option<PortId> {
         match self {
             Opcode::ADDrr |
-            Opcode::SUBrr => {
+            Opcode::ADDri |
+            Opcode::SUBrr |
+            Opcode::SUBri => {
                 match input {
                     0 => Some(0),
                     _ => None,
@@ -187,8 +224,10 @@ impl Display for Opcode {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             Opcode::MOVri => write!(f, "MOV"),
-            Opcode::ADDrr => write!(f, "ADD"),
-            Opcode::SUBrr => write!(f, "SUB"),
+            Opcode::ADDrr |
+            Opcode::ADDri => write!(f, "ADD"),
+            Opcode::SUBrr |
+            Opcode::SUBri => write!(f, "SUB"),
             Opcode::RET => write!(f, "RET"),
         }
     }
@@ -254,6 +293,16 @@ impl ToString for Instruction {
                 }
 
                 _ => panic!("Arithmetic instruction must have two operands")
+            }
+
+            Opcode::ADDri |
+            Opcode::SUBri => match (self.operands[0], self.operands[1]) {
+                (Some((Operand::Register(lhs_reg), lhs_ty)), Some((Operand::Immediate(rhs_imm), rhs_ty))) => {
+                    assert!(lhs_ty == rhs_ty, "Operands of arithmetic operations must have the same type");
+                    format!("{} {}, {}", self.opcode.to_string().to_lowercase(), lhs_reg.to_string(), rhs_ty.print_unsigned_in_hex(rhs_imm))
+                }
+
+                _ => panic!("Arithmetic instruction with an immediate must have one register operand and one immediate operand")
             }
 
             Opcode::RET => "ret".to_string()

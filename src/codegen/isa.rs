@@ -2,6 +2,7 @@ use crate::ir;
 use super::dag::*;
 use super::register_allocator::RegisterAllocationResult;
 use std::hash::Hash;
+use std::fmt::Debug;
 
 pub trait ISA: Sized + PartialEq {
     type Opcode : NativeOpcode;
@@ -27,14 +28,14 @@ pub trait NativeOpcode : Copy + ToString + Eq {
 
 }
 
-pub trait NativeInstruction : Copy + ToString + Eq {
+pub trait NativeInstruction : Copy + Debug + ToString + Eq {
 
 }
 
-pub trait NativeRegister : Copy + ToString + Eq + Hash {
+pub trait NativeRegister : Copy + Debug + ToString + Eq + Hash {
 
 }
 
-pub trait NativeType : Copy + ToString + Eq {
+pub trait NativeType : Copy + Debug + ToString + Eq {
 
 }

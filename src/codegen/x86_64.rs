@@ -3,6 +3,7 @@ use super::dag::*;
 use super::isa;
 use super::opcode::*;
 use super::register_allocator::RegisterAllocationResult;
+use std::fmt::*;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct ISA;
@@ -108,7 +109,7 @@ impl ISA {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Opcode {
     /// mov <reg>, <payload constant>; () -> (value)
     MOVri,
@@ -128,13 +129,13 @@ impl ToString for Opcode {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Operand {
     Register(Register),
     Immediate(u64),
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct Instruction {
     opcode: Opcode,
     operands: [Option<(Operand,Type)>; 2],
@@ -180,7 +181,7 @@ impl ToString for Instruction {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Register {
     RAX,
     RBX,
@@ -225,7 +226,7 @@ impl ToString for Register {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Type {
     Byte,
     Word,

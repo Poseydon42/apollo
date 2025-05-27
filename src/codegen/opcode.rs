@@ -83,6 +83,10 @@ impl<I: ISA> Opcode<I> {
             Opcode::Native(opcode) => *opcode,
         }
     }
+
+    pub fn is_constant(&self) -> bool {
+        matches!(self, Opcode::Generic(GenericOpcode::Constant))
+    }
 }
 
 impl<I: ISA> Display for Opcode<I> {

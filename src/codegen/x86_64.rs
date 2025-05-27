@@ -36,6 +36,9 @@ impl isa::ISA for ISA {
         match node.opcode().get_generic() {
             GenericOpcode::Constant => self.lower_constant(dag, instruction),
 
+            GenericOpcode::Add |
+            GenericOpcode::Sub => self.lower_simple_arithmetic(dag, instruction),
+
             GenericOpcode::Ret => self.lower_ret(dag, instruction),
             
             unsupported => panic!("Unsupported generic opcode {}", unsupported.to_string()),
@@ -61,6 +64,23 @@ impl isa::ISA for ISA {
                     *ty,
                 )
             }
+
+            Opcode::ADDrr |
+            Opcode::SUBrr => {
+                let lhs = register_allocation.value_map
+                    .get(&instruction.get_input(0))
+                    .expect("Left-hand side register for ADDrr/SUBrr should have been allocated");
+                let rhs = register_allocation.value_map
+                    .get(&instruction.get_input(1))
+                    .expect("Right-hand side register for ADDrr/SUBrr should have been allocated");
+                let ty = instruction.get_output_type(0).get_native();
+                Instruction::two_args(
+                    instruction.opcode().get_native(),
+                    Operand::Register(*lhs),
+                    Operand::Register(*rhs),
+                    *ty,
+                )
+            }
             Opcode::RET => Instruction::no_args(instruction.opcode().get_native()),
         })
     }
@@ -83,6 +103,28 @@ impl ISA {
         let value = dag.get(instruction).payload().get_constant().clone();
         let node = self.mov_reg_imm(dag, value);
         dag.replace_node(instruction, node.node());
+    }
+
+    fn lower_simple_arithmetic(&self, dag: &mut DAG<Self>, instruction: NodeId) {
+        let node = dag.get(instruction);
+        let lhs = node.get_input(0);
+        let rhs = node.get_input(1);
+        let ty = node.get_output_type(0).get_native();
+
+        let opcode = match node.opcode().get_generic() {
+            GenericOpcode::Add => Opcode::ADDrr,
+            GenericOpcode::Sub => Opcode::SUBrr,
+            _ => panic!("Unsupported generic opcode for arithmetic operation"),
+        };
+
+        let node = dag.add_native_node(
+            opcode, 
+            vec![
+                lhs,
+                rhs],
+            vec![OutputType::Native(ty.clone())]
+        );
+        dag.replace_node(instruction, node);
     }
 
     fn lower_ret(&self, dag: &mut DAG<Self>, instruction: NodeId) {
@@ -114,17 +156,39 @@ pub enum Opcode {
     /// mov <reg>, <payload constant>; () -> (value)
     MOVri,
 
+    /// add <reg>, <reg>; (lhs, rhs) -> (value)
+    ADDrr,
+
+    /// add <reg>, <reg>; (lhs, rhs) -> (value)
+    SUBrr,
+
     /// ret; (ctrl, value) -> ()
     RET,
 }
 
-impl isa::NativeOpcode for Opcode {}
-
-impl ToString for Opcode {
-    fn to_string(&self) -> String {
+impl isa::NativeOpcode for Opcode {
+    fn is_output_alised_with_input(&self, output: PortId) -> Option<PortId> {
         match self {
-            Opcode::MOVri => "MOV".to_string(),
-            Opcode::RET => "RET".to_string(),
+            Opcode::ADDrr |
+            Opcode::SUBrr => {
+                match output {
+                    0 => Some(0),
+                    _ => None,
+                }
+            }
+
+            _ => None,
+        }
+    }
+}
+
+impl Display for Opcode {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match self {
+            Opcode::MOVri => write!(f, "MOV"),
+            Opcode::ADDrr => write!(f, "ADD"),
+            Opcode::SUBrr => write!(f, "SUB"),
+            Opcode::RET => write!(f, "RET"),
         }
     }
 }
@@ -174,6 +238,21 @@ impl ToString for Instruction {
                 }
 
                 _ => panic!("MOV instruction must have two operands")
+            }
+
+            Opcode::ADDrr |
+            Opcode::SUBrr => match (self.operands[0], self.operands[1]) {
+                (Some((lhs, lhs_ty)), Some((rhs, rhs_ty))) => {
+                    assert!(lhs_ty == rhs_ty, "Operands of arithmetic operations must have the same type");
+                    match (lhs, rhs) {
+                        (Operand::Register(lhs_reg), Operand::Register(rhs_reg)) =>
+                            format!("{} {}, {}", self.opcode.to_string().to_lowercase(), lhs_reg.to_string(), rhs_reg.to_string()),
+
+                        _ => panic!("Invalid combination of operands for {}", self.opcode)
+                    }
+                }
+
+                _ => panic!("Arithmetic instruction must have two operands")
             }
 
             Opcode::RET => "ret".to_string()

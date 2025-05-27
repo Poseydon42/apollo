@@ -5,13 +5,26 @@ pub enum GenericOpcode {
     // Special opcodes - they don't represent a real instruction
 
     /// Inputs:
+    ///
     /// Outputs:
     ///   - the constant value
     Constant,
 
+    // Arithmetic opcodes
+ 
+    /// Inputs:
+    ///   - The first (left) operand
+    ///   - The second (right) operand
+    ///
+    /// Outputs:
+    ///   - Result
+    Add, Sub,
+
+
     // Control flow
 
     /// Inputs:
+    ///
     /// Outputs:
     ///   - control token
     Enter,
@@ -19,6 +32,7 @@ pub enum GenericOpcode {
     /// Inputs:
     ///   - control token
     ///   - value to return
+    ///
     /// Outputs:
     Ret,
 }
@@ -82,9 +96,11 @@ impl<I: ISA> ToString for Opcode<I> {
 impl ToString for GenericOpcode {
     fn to_string(&self) -> String {
         match self {
-            GenericOpcode::Constant => "Constant".to_string(),
-            GenericOpcode::Enter => "Enter".to_string(),
-            GenericOpcode::Ret => "Ret".to_string(),
-        }
+            GenericOpcode::Constant => "Constant",
+            GenericOpcode::Add => "Add",
+            GenericOpcode::Sub => "Sub",
+            GenericOpcode::Enter => "Enter",
+            GenericOpcode::Ret => "Ret",
+        }.to_string()
     }
 }

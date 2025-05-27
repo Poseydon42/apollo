@@ -8,7 +8,7 @@ use crate::ir;
 use std::collections::HashSet;
 
 pub fn codegen_function<I: ISA>(function: &ir::Function, isa: I, debug_dump: bool) -> Option<NativeFunction> {
-    let IRLoweringResult { mut dag } = lower_function(function, &isa);
+    let IRLoweringResult { mut dag } = lower_basic_block(function, &function.code, &isa);
 
     if debug_dump {
         println!("Initial DAG:");

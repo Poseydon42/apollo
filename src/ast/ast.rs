@@ -18,6 +18,7 @@ impl Module {
 #[derive(Debug)]
 pub enum DeclKind {
     Function(FunctionDecl),
+    Variable(VariableDecl),
 }
 
 pub type Decl = Node<DeclKind>;
@@ -27,6 +28,13 @@ pub struct FunctionDecl {
     pub name: Span,
     pub return_ty: Ty,
     pub body: Vec<Stmt>,
+}
+
+#[derive(Debug)]
+pub struct VariableDecl {
+    pub name: Span,
+    pub ty: Ty,
+    pub init: Expr,
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -47,6 +55,7 @@ impl Display for BinaryOp {
 #[derive(Debug)]
 pub enum ExprKind {
     IntegerLiteral,
+    VariableReference,
     Binary { lhs: Box<Expr>, op: BinaryOp, rhs: Box<Expr> },
 }
 
@@ -54,6 +63,7 @@ pub type Expr = Node<ExprKind>;
 
 #[derive(Debug)]
 pub enum StmtKind {
+    Decl(Decl),
     Return(Expr),
 }
 

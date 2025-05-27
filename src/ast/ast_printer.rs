@@ -37,8 +37,17 @@ impl<'ast, 'writer, W: Write> Visitor<'ast> for ASTPrinter<'writer, W> {
         increase_indent_and!(self, walk_func_decl(func, self));
     }
 
+    fn visit_variable_decl(&mut self, variable: &'ast VariableDecl, node: &'ast Decl) {
+        writeln_with_ident!(self, "VariableDecl @ ({},{}): {} : {}", node.span.line(), node.span.column(), variable.name.text(), variable.ty.to_string());
+        increase_indent_and!(self, self.visit_expr(&variable.init));
+    }
+
     fn visit_integer_literal_expr(&mut self, node: &'ast Expr) {
         writeln_with_ident!(self, "IntegerLiteralExpr @ ({},{}): {}", node.span.line(), node.span.column(), node.span.text());
+    }
+
+    fn visit_variable_reference_expr(&mut self, node: &'ast Expr) {
+        writeln_with_ident!(self, "VariableReferenceExpr @ ({},{}): {}", node.span.line(), node.span.column(), node.span.text());
     }
 
     fn visit_binary_expr(&mut self, lhs: &'ast Expr, op: BinaryOp, rhs: &'ast Expr, _expr: &'ast Expr) -> () {

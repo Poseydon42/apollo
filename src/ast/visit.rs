@@ -11,11 +11,17 @@ pub trait Visitor<'ast, ReturnType = ()> : Sized where
     fn visit_decl(&mut self, decl: &'ast Decl) -> ReturnType {
         match &decl.data {
             DeclKind::Function(func_decl) => self.visit_func_decl(&func_decl, decl),
+            DeclKind::Variable(variable_decl) => self.visit_variable_decl(&variable_decl, decl),
         }
     }
 
     fn visit_func_decl(&mut self, func: &'ast FunctionDecl, _node: &'ast Decl) -> ReturnType {
         walk_func_decl(func, self);
+        Default::default()
+    }
+
+    fn visit_variable_decl(&mut self, variable: &'ast VariableDecl, _node: &'ast Decl) -> ReturnType {
+        walk_variable_decl(variable, self);
         Default::default()
     }
 
@@ -26,11 +32,16 @@ pub trait Visitor<'ast, ReturnType = ()> : Sized where
     fn visit_expr(&mut self, expr: &'ast Expr) -> ReturnType {
         match &expr.data {
             ExprKind::IntegerLiteral => self.visit_integer_literal_expr(expr),
+            ExprKind::VariableReference => self.visit_variable_reference_expr(expr),
             ExprKind::Binary { lhs, op, rhs } => self.visit_binary_expr(lhs.deref(), *op, rhs.deref(), expr)
         }
     }
 
     fn visit_integer_literal_expr(&mut self, _node: &'ast Expr) -> ReturnType {
+        Default::default()
+    }
+
+    fn visit_variable_reference_expr(&mut self, _node: &'ast Expr) -> ReturnType {
         Default::default()
     }
 
@@ -42,8 +53,14 @@ pub trait Visitor<'ast, ReturnType = ()> : Sized where
 
     fn visit_stmt(&mut self, stmt: &'ast Stmt) -> ReturnType {
         match &stmt.data {
+            StmtKind::Decl(decl) => self.visit_decl_stmt(decl),
             StmtKind::Return(value) => self.visit_return_stmt(value, stmt)
         }
+    }
+
+    fn visit_decl_stmt(&mut self, decl: &'ast Decl) -> ReturnType {
+        self.visit_decl(decl);
+        Default::default()
     }
 
     fn visit_return_stmt(&mut self, value: &'ast Expr, _stmt: &'ast Stmt) -> ReturnType {
@@ -62,4 +79,8 @@ pub fn walk_func_decl<'ast, T: Default, V: Visitor<'ast, T>>(func: &'ast Functio
     for stmt in &func.body {
         visitor.visit_stmt(stmt);
     }
+}
+
+pub fn walk_variable_decl<'ast, T: Default, V: Visitor<'ast, T>>(variable: &'ast VariableDecl, visitor: &mut V) {
+    visitor.visit_expr(&variable.init);
 }

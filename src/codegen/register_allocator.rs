@@ -9,8 +9,14 @@ pub struct RegisterAllocationResult<I: ISA> {
 pub fn allocate_registers<I: ISA>(dag: &DAG<I>, order: &[NodeId], isa: &I) -> RegisterAllocationResult<I> {
     let mut value_map = HashMap::new();
     let mut free_registers : HashSet<_> = isa.get_usable_registers().into_iter().collect();
+    let live_ranges = calculate_live_ranges(dag, order);
+    
+    println!("Live ranges:");
+    for (value, (start, end)) in &live_ranges {
+        println!("\tValue {} live from {} to {}", value, start, end);
+    }
 
-    for instruction in order {
+    for (idx, instruction) in order.iter().enumerate() {
         let instruction = dag.get(*instruction);
         assert!(
             !instruction.is_dead() || instruction.id() == *order.last().unwrap(),
@@ -23,6 +29,15 @@ pub fn allocate_registers<I: ISA>(dag: &DAG<I>, order: &[NodeId], isa: &I) -> Re
 
             let value = dag.get_value(instruction.id(), i);
             assert!(!value_map.contains_key(&value), "Value {:?} already has a register allocated", value);
+
+            if let Some(input_id) = instruction.opcode().get_native().is_output_alised_with_input(i) {
+                let input = instruction.get_input(input_id);
+                // If the input value is not used after this instruction and the output register is aliased with it, we can reuse it.
+                if live_ranges[&input].1 == idx {
+                    value_map.insert(value, value_map[&input]);
+                    continue;
+                }
+            }
 
             let reg = free_registers.iter().filter(|reg|
                 dag.uses(value).all(|(node, port)| dag.get(*node).is_input_allowed_in_register(*port, reg))
@@ -48,4 +63,27 @@ fn is_register_type<I: ISA>(ty: &OutputType<I>) -> bool {
 
         _ => false,
     }
+}
+
+fn calculate_live_ranges<I: ISA>(dag: &DAG<I>, order: &[NodeId]) -> HashMap<Value, (usize, usize)> {
+    let mut live_ranges = HashMap::new();
+
+    for (idx, id) in order.iter().enumerate() {
+        let node = dag.get(*id);
+        node.inputs()
+            .cloned()
+            .chain(node.outputs())
+            .for_each(
+            |value| {
+                if !is_register_type(dag.get_value_type(value)) {
+                    return;
+                }
+                let range = live_ranges.entry(value).or_insert((idx, idx));
+                range.0 = range.0.min(idx);
+                range.1 = range.1.max(idx);
+            }
+        );
+    }
+
+    live_ranges
 }

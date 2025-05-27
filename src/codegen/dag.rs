@@ -73,7 +73,7 @@ impl <I: ISA> Node<I> {
         self.inputs[input].value
     }
 
-    pub fn is_input_allowed_in_register(&self, input: PortId, reg: &I::Register) -> bool {
+    pub fn is_input_allowed_in_register(&self, input: PortId, reg: I::Register) -> bool {
         assert!(
             input < self.inputs.len(),
             "Trying to access input {} of node {}, but the node has only {} inputs",
@@ -81,7 +81,7 @@ impl <I: ISA> Node<I> {
         if self.inputs[input].allowed_registers.is_empty() {
             return true;
         }
-        self.inputs[input].allowed_registers.iter().any(|allowed| allowed == reg)
+        self.inputs[input].allowed_registers.iter().any(|allowed| *allowed == reg)
     }
 
     pub fn outputs(&self) -> impl DoubleEndedIterator<Item = Value> + use<'_, I> {

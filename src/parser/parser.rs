@@ -171,7 +171,7 @@ impl<'a, R: diagnostic::Reporter> Parser<'a, R> {
         Some(Decl::new(DeclKind::Variable(variable), span))
     }
 
-    fn parse_ty(&mut self) -> Option<Ty> {
+    fn parse_ty(&mut self) -> Option<Type> {
         if self.match_name_ty() {
             self.parse_name_ty()
         } else {
@@ -179,12 +179,9 @@ impl<'a, R: diagnostic::Reporter> Parser<'a, R> {
         }
     }
 
-    fn parse_name_ty(&mut self) -> Option<Ty> {
+    fn parse_name_ty(&mut self) -> Option<Type> {
         let name = self.eat(LexemKind::Identifier)?;
-        match name.span.text() {
-            "i32" => Some(Ty::BuiltIn(BuiltInTy::Int)),
-            _ => None
-        }
+        Some(Type::new(name.span.clone()))
     }
 
     fn parse_expr(&mut self) -> Option<Expr> {
@@ -193,19 +190,19 @@ impl<'a, R: diagnostic::Reporter> Parser<'a, R> {
             self.advance();
             let rhs = self.parse_primary_expr()?; // FIXME: Pratt parsing
             let span = lhs.span.clone().merge_with(&rhs.span);
-            lhs = Expr::new(ExprKind::Binary { lhs: Box::new(lhs), op, rhs: Box::new(rhs) }, span);
+            lhs = Expr::new(ExprKind::Binary(BinaryExpr::new(lhs, op, rhs)), span);
         }
         Some(lhs)
     }
 
     fn parse_integer_literal_expr(&mut self) -> Option<Expr> {
         let literal = self.eat(LexemKind::IntegerLiteral)?;
-        Some(Expr::new(ExprKind::IntegerLiteral, literal.span.clone()))
+        Some(Expr::new(ExprKind::IntegerLiteral(IntegerLiteralExpr::new(literal.span.clone())), literal.span.clone()))
     }
 
     fn parse_identifier_expr(&mut self) -> Option<Expr> {
         let identifier = self.eat(LexemKind::Identifier)?;
-        Some(Expr::new(ExprKind::VariableReference, identifier.span.clone()))
+        Some(Expr::new(ExprKind::VariableReference(VariableReferenceExpr::new(identifier.span.clone())), identifier.span.clone()))
     }
 
     fn parse_primary_expr(&mut self) -> Option<Expr> {

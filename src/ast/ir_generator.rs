@@ -38,7 +38,9 @@ impl Visitor<'_, Option<ir::Value>> for IRGenerator {
         };
         self.context = Some(context);
 
-        walk_func_decl(func, self);
+        func.body.iter().for_each(|stmt| { 
+            self.visit_stmt(stmt);
+        });
 
         let context = self.context.take().unwrap();
         let function = ir::Function {
@@ -51,20 +53,18 @@ impl Visitor<'_, Option<ir::Value>> for IRGenerator {
         None
     }
 
-    fn visit_integer_literal_expr(&mut self, expr: &'_ ast::Expr) -> Option<ir::Value> {
-        assert!(matches!(expr.data, ast::ExprKind::IntegerLiteral));
-
+    fn visit_integer_literal_expr(&mut self, expr: &'_ ast::IntegerLiteralExpr, _node: &'_ ast::Expr) -> Option<ir::Value> {
         // FIXME: this is so, so bad. We should use some sort of binary representation of an
         //        "abstract typed value" instead of relying on Rust's integer parsing functionality
-        let value: i32 = expr.span.text().parse().expect("Value of an integer literal must be a valid 32 bit signed integer");
+        let value: i32 = expr.raw_value.text().parse().expect("Value of an integer literal must be a valid 32 bit signed integer");
         let value = ir::Value::constant(ir::Constant::int(value));
         Some(value)
     }
 
-    fn visit_binary_expr(&mut self, lhs: &'_ ast::Expr, op: ast::BinaryOp, rhs: &'_ ast::Expr, _expr: &'_ ast::Expr) -> Option<ir::Value> {
-        let lhs = self.visit_expr(lhs).expect("Left-hand side of binary expression must produce a node");
-        let rhs = self.visit_expr(rhs).expect("Right-hand side of binary expression must produce a node");
-        let instruction = match op {
+    fn visit_binary_expr(&mut self, expr: &BinaryExpr, _node: &Expr) -> Option<ir::Value> {
+        let lhs = self.visit_expr(&*expr.lhs).expect("Left-hand side of binary expression must produce a node");
+        let rhs = self.visit_expr(&*expr.rhs).expect("Right-hand side of binary expression must produce a node");
+        let instruction = match expr.op {
             ast::BinaryOp::Add => ir::Instruction::Add(lhs, rhs),
             ast::BinaryOp::Sub => ir::Instruction::Sub(lhs, rhs),
         };

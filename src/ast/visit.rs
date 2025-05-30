@@ -1,10 +1,11 @@
-use std::ops::Deref;
 use crate::ast::*;
 
 pub trait Visitor<'ast, ReturnType = ()> : Sized where
     ReturnType : Default {
     fn visit_module(&mut self, module: &'ast Module) -> ReturnType {
-        walk_module(module, self);
+        for decl in &module.decls {
+            self.visit_decl(decl);
+        }
         Default::default()
     }
 
@@ -16,38 +17,36 @@ pub trait Visitor<'ast, ReturnType = ()> : Sized where
     }
 
     fn visit_func_decl(&mut self, func: &'ast FunctionDecl, _node: &'ast Decl) -> ReturnType {
-        walk_func_decl(func, self);
+        for stmt in &func.body {
+            self.visit_stmt(stmt);
+        }
         Default::default()
     }
 
     fn visit_variable_decl(&mut self, variable: &'ast VariableDecl, _node: &'ast Decl) -> ReturnType {
-        walk_variable_decl(variable, self);
-        Default::default()
-    }
-
-    fn visit_name_ty(&mut self, _node: &'ast Ty) -> ReturnType {
+        self.visit_expr(&variable.init);
         Default::default()
     }
 
     fn visit_expr(&mut self, expr: &'ast Expr) -> ReturnType {
         match &expr.data {
-            ExprKind::IntegerLiteral => self.visit_integer_literal_expr(expr),
-            ExprKind::VariableReference => self.visit_variable_reference_expr(expr),
-            ExprKind::Binary { lhs, op, rhs } => self.visit_binary_expr(lhs.deref(), *op, rhs.deref(), expr)
+            ExprKind::IntegerLiteral(literal_expr) => self.visit_integer_literal_expr(literal_expr, expr),
+            ExprKind::VariableReference(variable_reference_expr) => self.visit_variable_reference_expr(variable_reference_expr, expr),
+            ExprKind::Binary(binary_expr) => self.visit_binary_expr(binary_expr, expr)
         }
     }
 
-    fn visit_integer_literal_expr(&mut self, _node: &'ast Expr) -> ReturnType {
+    fn visit_integer_literal_expr(&mut self, _expr: &'ast IntegerLiteralExpr, _node: &'ast Expr) -> ReturnType {
         Default::default()
     }
 
-    fn visit_variable_reference_expr(&mut self, _node: &'ast Expr) -> ReturnType {
+    fn visit_variable_reference_expr(&mut self, _expr: &'ast VariableReferenceExpr, _node: &'ast Expr) -> ReturnType {
         Default::default()
     }
 
-    fn visit_binary_expr(&mut self, lhs: &'ast Expr, _op: BinaryOp, rhs: &'ast Expr, _expr: &'ast Expr) -> ReturnType {
-        self.visit_expr(lhs);
-        self.visit_expr(rhs);
+    fn visit_binary_expr(&mut self, expr: &'ast BinaryExpr, _node: &'ast Expr) -> ReturnType {
+        self.visit_expr(&*expr.lhs);
+        self.visit_expr(&*expr.rhs);
         Default::default()
     }
 
@@ -67,20 +66,4 @@ pub trait Visitor<'ast, ReturnType = ()> : Sized where
         self.visit_expr(value);
         Default::default()
     }
-}
-
-pub fn walk_module<'ast, T: Default, V: Visitor<'ast, T>>(module: &'ast Module, visitor: &mut V) {
-    for decl in &module.decls {
-        visitor.visit_decl(decl);
-    }
-}
-
-pub fn walk_func_decl<'ast, T: Default, V: Visitor<'ast, T>>(func: &'ast FunctionDecl, visitor: &mut V) {
-    for stmt in &func.body {
-        visitor.visit_stmt(stmt);
-    }
-}
-
-pub fn walk_variable_decl<'ast, T: Default, V: Visitor<'ast, T>>(variable: &'ast VariableDecl, visitor: &mut V) {
-    visitor.visit_expr(&variable.init);
 }

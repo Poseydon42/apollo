@@ -3,12 +3,14 @@ use apollo::codegen::*;
 use apollo::diagnostic::ConsoleReporter;
 use apollo::lexer::Lexer;
 use apollo::parser::Parser;
+use apollo::typechecker::TypeChecker;
 use std::rc::Rc;
 
 fn main() -> Result<(), i32> {
     let src = Rc::new(
         r"fn main() -> i32 {\
-            return 20 + 30 - 8;\
+            let a: i32 = 30; \
+            return 12 + a; \
         }".to_owned());
 
     let mut lexer = Lexer::new(src);
@@ -21,12 +23,19 @@ fn main() -> Result<(), i32> {
 
     let mut reporter = ConsoleReporter::new();
     let mut parser = Parser::new(lexems, &mut reporter);
-    let module = parser.parse();
+    let mut module = parser.parse();
 
     println!("===== AST =====");
     let stdout = &mut std::io::stdout();
     let mut printer = ASTPrinter::new(stdout);
     printer.visit_module(&module);
+
+    println!("===== TYPECHECK =====");
+    let type_ok = TypeChecker::new().check(&mut module);
+    println!("Type checking {}", if type_ok { "succeeded" } else { "failed" });
+    if type_ok {
+        printer.visit_module(&module);
+    }
 
     println!("===== IR =====");
     let ir_generator = IRGenerator::new();

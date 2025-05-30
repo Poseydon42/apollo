@@ -3,18 +3,14 @@ use crate::ir;
 
 pub struct IRGenerator {
     module: ir::Module,
-    context: Option<FunctionContext>,
-}
-
-struct FunctionContext {
-    bb: ir::BasicBlock,
+    function: Option<ir::Function>,
 }
 
 impl IRGenerator {
     pub fn new() -> Self {
         Self {
             module: ir::Module::new(),
-            context: None
+            function: None,
         }
     }
 
@@ -24,31 +20,25 @@ impl IRGenerator {
     }
 
     fn get_bb_mut(&mut self) -> &mut ir::BasicBlock {
-        &mut self.context.as_mut().expect("Context must be set").bb
+        &mut self.function.as_mut().expect("Function must be set").code
     }
 }
 
 impl Visitor<'_, Option<ir::Value>> for IRGenerator {
-    fn visit_func_decl(&mut self, func: &ast::FunctionDecl, _node: &ast::Decl) -> Option<ir::Value> {
-        assert!(self.context.is_none(), "Function declaration within function declaration is not supported");
+    fn visit_func_decl(&mut self, func_decl: &ast::FunctionDecl, _node: &ast::Decl) -> Option<ir::Value> {
+        assert!(self.function.is_none(), "Function declaration within function declaration is not supported");
 
-        let bb = ir::BasicBlock::new(func.name.text().to_owned());
-        let context = FunctionContext {
-            bb,
-        };
-        self.context = Some(context);
+        let bb = ir::BasicBlock::new(func_decl.name.text().to_owned());
+        let function = ir::Function::new(func_decl.name.text().to_owned(), bb);
+        self.function = Some(function);
 
-        func.body.iter().for_each(|stmt| { 
+        func_decl.body.iter().for_each(|stmt| { 
             self.visit_stmt(stmt);
         });
 
-        let context = self.context.take().unwrap();
-        let function = ir::Function {
-            name: func.name.text().to_owned(),
-            code: context.bb,
-        };
+        let function = self.function.take().unwrap();
         self.module.add_function(function);
-        self.context = None; // Reset context after function declaration
+        self.function = None;
 
         None
     }

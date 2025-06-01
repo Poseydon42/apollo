@@ -41,13 +41,17 @@ impl BasicBlock {
     }
 
     pub fn append_instruction(&mut self, instruction: Instruction) -> (InstructionRef, Option<Value>) {
+        let name = format!("{}", self.next_unnamed_value_id);
+        self.next_unnamed_value_id += 1;
+        self.append_named_instruction(instruction, name)
+    }
+
+    pub fn append_named_instruction(&mut self, instruction: Instruction, name: String) -> (InstructionRef, Option<Value>) {
         let produces_value = instruction.produces_value();
         let instruction_ref = self.instructions.append(instruction);
         let value = match produces_value {
             true => {
-                let id = self.next_unnamed_value_id;
-                self.next_unnamed_value_id += 1;
-                let value = Value::Instruction(instruction_ref, format!("{}", id));
+                let value = Value::Instruction(instruction_ref, name);
                 self.values.insert(instruction_ref, value.clone());
                 Some(value)
             }

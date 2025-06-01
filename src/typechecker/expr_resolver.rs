@@ -22,6 +22,7 @@ impl<'ast> MutVisitor<'ast, Option<ResolvedType>> for ExprResolver<'ast> {
 
     fn visit_variable_reference_expr(&mut self, expr: &'ast mut VariableReferenceExpr) -> Option<ResolvedType> {
        if let Some(ty) = self.function.get_variable(&expr.name.text()) {
+            expr.ty = Some(ty.clone());
             Some(ty.clone())
         } else {
             println!("Variable {} not found in current function context", expr.name.text());

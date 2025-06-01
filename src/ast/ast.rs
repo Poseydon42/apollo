@@ -85,12 +85,14 @@ impl IntegerLiteralExpr {
 #[derive(Debug)]
 pub struct VariableReferenceExpr {
     pub name: Span,
+    pub ty: Option<ResolvedType>,
 }
 
 impl VariableReferenceExpr {
     pub fn new(name: Span) -> Self {
         Self {
             name,
+            ty: None,
         }
     }
 }

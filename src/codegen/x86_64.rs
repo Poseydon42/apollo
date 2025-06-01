@@ -272,7 +272,7 @@ impl ToString for Instruction {
                     assert!(dst_ty == src_ty, "Operands of mov must have the same type");
                     match (dst, src) {
                         (Operand::Register(reg), Operand::Immediate(imm)) =>
-                            format!("mov {}, {}", reg.to_string(), src_ty.print_unsigned_in_hex(imm)),
+                            format!("mov {}, {}", reg.to_string(dst_ty), src_ty.print_unsigned_in_hex(imm)),
 
                         _ => panic!("Invalid combination of operands for mov")
                     }
@@ -287,7 +287,7 @@ impl ToString for Instruction {
                     assert!(lhs_ty == rhs_ty, "Operands of arithmetic operations must have the same type");
                     match (lhs, rhs) {
                         (Operand::Register(lhs_reg), Operand::Register(rhs_reg)) =>
-                            format!("{} {}, {}", self.opcode.to_string().to_lowercase(), lhs_reg.to_string(), rhs_reg.to_string()),
+                            format!("{} {}, {}", self.opcode.to_string().to_lowercase(), lhs_reg.to_string(lhs_ty), rhs_reg.to_string(rhs_ty)),
 
                         _ => panic!("Invalid combination of operands for {}", self.opcode)
                     }
@@ -300,7 +300,7 @@ impl ToString for Instruction {
             Opcode::SUBri => match (self.operands[0], self.operands[1]) {
                 (Some((Operand::Register(lhs_reg), lhs_ty)), Some((Operand::Immediate(rhs_imm), rhs_ty))) => {
                     assert!(lhs_ty == rhs_ty, "Operands of arithmetic operations must have the same type");
-                    format!("{} {}, {}", self.opcode.to_string().to_lowercase(), lhs_reg.to_string(), rhs_ty.print_unsigned_in_hex(rhs_imm))
+                    format!("{} {}, {}", self.opcode.to_string().to_lowercase(), lhs_reg.to_string(lhs_ty), rhs_ty.print_unsigned_in_hex(rhs_imm))
                 }
 
                 _ => panic!("Arithmetic instruction with an immediate must have one register operand and one immediate operand")
@@ -333,26 +333,88 @@ pub enum Register {
 
 impl isa::NativeRegister for Register {}
 
-impl ToString for Register {
-    fn to_string(&self) -> String {
-        match self {
-            Register::RAX => "rax".to_string(),
-            Register::RBX => "rbx".to_string(),
-            Register::RCX => "rcx".to_string(),
-            Register::RDX => "rdx".to_string(),
-            Register::RSI => "rsi".to_string(),
-            Register::RDI => "rdi".to_string(),
-            Register::RSP => "rsp".to_string(),
-            Register::RBP => "rbp".to_string(),
-            Register::R8 => "r8".to_string(),
-            Register::R9 => "r9".to_string(),
-            Register::R10 => "r10".to_string(),
-            Register::R11 => "r11".to_string(),
-            Register::R12 => "r12".to_string(),
-            Register::R13 => "r13".to_string(),
-            Register::R14 => "r14".to_string(),
-            Register::R15 => "r15".to_string(),
+impl Register {
+    fn to_string(&self, size: Type) -> String {
+        match size {
+            Type::Byte => match self {
+                Register::RAX => "al".to_string(),
+                Register::RBX => "bl".to_string(),
+                Register::RCX => "cl".to_string(),
+                Register::RDX => "dl".to_string(),
+                Register::RSI => "sil".to_string(),
+                Register::RDI => "dil".to_string(),
+                Register::RSP => "spl".to_string(),
+                Register::RBP => "bpl".to_string(),
+                Register::R8 => "r8b".to_string(),
+                Register::R9 => "r9b".to_string(),
+                Register::R10 => "r10b".to_string(),
+                Register::R11 => "r11b".to_string(),
+                Register::R12 => "r12b".to_string(),
+                Register::R13 => "r13b".to_string(),
+                Register::R14 => "r14b".to_string(),
+                Register::R15 => "r15b".to_string(),
+            }
+            Type::Word => match self {
+                Register::RAX => "ax".to_string(),
+                Register::RBX => "bx".to_string(),
+                Register::RCX => "cx".to_string(),
+                Register::RDX => "dx".to_string(),
+                Register::RSI => "si".to_string(),
+                Register::RDI => "di".to_string(),
+                Register::RSP => "sp".to_string(),
+                Register::RBP => "bp".to_string(),
+                Register::R8 => "r8w".to_string(),
+                Register::R9 => "r9w".to_string(),
+                Register::R10 => "r10w".to_string(),
+                Register::R11 => "r11w".to_string(),
+                Register::R12 => "r12w".to_string(),
+                Register::R13 => "r13w".to_string(),
+                Register::R14 => "r14w".to_string(),
+                Register::R15 => "r15w".to_string(),
+            }
+            Type::DWord => match self {
+                Register::RAX => "eax".to_string(),
+                Register::RBX => "ebx".to_string(),
+                Register::RCX => "ecx".to_string(),
+                Register::RDX => "edx".to_string(),
+                Register::RSI => "esi".to_string(),
+                Register::RDI => "edi".to_string(),
+                Register::RSP => "esp".to_string(),
+                Register::RBP => "ebp".to_string(),
+                Register::R8 => "r8d".to_string(),
+                Register::R9 => "r9d".to_string(),
+                Register::R10 => "r10d".to_string(),
+                Register::R11 => "r11d".to_string(),
+                Register::R12 => "r12d".to_string(),
+                Register::R13 => "r13d".to_string(),
+                Register::R14 => "r14d".to_string(),
+                Register::R15 => "r15d".to_string(),
+            }
+            Type::QWord => match self {
+                Register::RAX => "rax".to_string(),
+                Register::RBX => "rbx".to_string(),
+                Register::RCX => "rcx".to_string(),
+                Register::RDX => "rdx".to_string(),
+                Register::RSI => "rsi".to_string(),
+                Register::RDI => "rdi".to_string(),
+                Register::RSP => "rsp".to_string(),
+                Register::RBP => "rbp".to_string(),
+                Register::R8 => "r8".to_string(),
+                Register::R9 => "r9".to_string(),
+                Register::R10 => "r10".to_string(),
+                Register::R11 => "r11".to_string(),
+                Register::R12 => "r12".to_string(),
+                Register::R13 => "r13".to_string(),
+                Register::R14 => "r14".to_string(),
+                Register::R15 => "r15".to_string(),
+            }
         }
+    }
+}
+
+impl Display for Register {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "{}", self.to_string(Type::QWord))
     }
 }
 

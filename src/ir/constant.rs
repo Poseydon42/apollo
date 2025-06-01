@@ -39,6 +39,7 @@ impl Display for Constant {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self.ty {
             Ty::Int => write!(f, "{} {}", self.ty, self.bits_as_u32()),
+            Ty::Ptr => panic!("Pointer constants are not supported"),
         }
     }
 }

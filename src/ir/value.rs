@@ -12,9 +12,9 @@ impl Value {
         Self::Constant(value)
     }
 
-    pub fn ty<'a>(&'a self, bb: &'a BasicBlock) -> &'a Ty {
+    pub fn ty<'a>(&'a self, bb: &'a BasicBlock) -> Ty {
         match self {
-            Self::Constant(c) => c.ty(),
+            Self::Constant(c) => c.ty().clone(),
             Self::Instruction(instruction_ref, _name) => bb.get_instruction(*instruction_ref).ty(bb).unwrap(),
         }
     }

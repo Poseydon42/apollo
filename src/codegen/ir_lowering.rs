@@ -59,10 +59,12 @@ impl <'a, I: ISA> IRLowering<'a, I> {
             ir::Instruction::Sub(lhs, rhs) => self.lower_arithmetic(GenericOpcode::Sub, value.unwrap(), lhs, rhs),
 
             ir::Instruction::Return(value) => self.lower_return(value),
+
+            _ => todo!(),
         }
     }
 
-    fn lower_arithmetic(&mut self, opcode: GenericOpcode, ir_value: ir::Value, lhs: &ir::Value, rhs: &ir::Value) {
+    fn lower_arithmetic(&mut self, opcode: GenericOpcode<I>, ir_value: ir::Value, lhs: &ir::Value, rhs: &ir::Value) {
         let lhs = self.get_lowered_value(lhs);
         let rhs = self.get_lowered_value(rhs);
         assert!(self.dag.get_value_type(lhs) == self.dag.get_value_type(rhs), "Operands must have the same type for arithmetic operations");
@@ -118,9 +120,8 @@ impl <'a, I: ISA> IRLowering<'a, I> {
 
     fn get_constant(&mut self, value: ir::Constant) -> Value {
         let ty = self.isa.lower_type(value.ty());
-        let constant = self.dag.add_generic_node_with_payload(
-            GenericOpcode::Constant,
-            NodePayload::Constant(value), 
+        let constant = self.dag.add_generic_node(
+            GenericOpcode::Constant(value.clone()),
             vec![],
             vec![ OutputType::Native(ty) ]
         );

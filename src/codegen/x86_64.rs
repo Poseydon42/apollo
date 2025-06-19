@@ -35,7 +35,7 @@ impl isa::ISA for ISA {
         let node = dag.get(instruction);
         assert!(node.is_generic(), "ISA shouldn't be asked to lower a native opcode");
         match node.opcode().get_generic() {
-            GenericOpcode::Constant => self.lower_constant(dag, instruction),
+            GenericOpcode::Constant(..) => panic!("Constant nodes should not be a target for instruction selection"),
 
             GenericOpcode::Add |
             GenericOpcode::Sub => self.lower_simple_arithmetic(dag, instruction),
@@ -46,7 +46,7 @@ impl isa::ISA for ISA {
         }
     }
 
-    fn build_native_instruction(&self, instruction: &Node<Self>, register_allocation: &RegisterAllocationResult<Self>) -> Option<Self::Instruction> {
+    fn build_native_instruction(&self, dag: &DAG<Self>, instruction: &Node<Self>, register_allocation: &RegisterAllocationResult<Self>) -> Option<Self::Instruction> {
         if instruction.is_generic() {
             return None;
         }
@@ -54,7 +54,7 @@ impl isa::ISA for ISA {
         Some(match instruction.opcode().get_native() {
             Opcode::MOVri => {
                 let ty = instruction.get_output_type(0).get_native();
-                let value = instruction.payload().get_constant().clone();
+                let value = dag.get(instruction.get_input(0).node()).opcode().get_constant();
                 let dst = register_allocation.value_map
                     .get(&instruction.get_output(0))
                     .expect("Destination register for MOVri should have been allocated");
@@ -66,34 +66,26 @@ impl isa::ISA for ISA {
                 )
             }
 
-            Opcode::ADDrr |
-            Opcode::SUBrr => {
+            Opcode::ADD |
+            Opcode::SUB => {
+                let ty = instruction.get_output_type(0).get_native();
                 let lhs = register_allocation.value_map
                     .get(&instruction.get_input(0))
-                    .expect("Left-hand side register for ADDrr/SUBrr should have been allocated");
-                let rhs = register_allocation.value_map
-                    .get(&instruction.get_input(1))
-                    .expect("Right-hand side register for ADDrr/SUBrr should have been allocated");
-                let ty = instruction.get_output_type(0).get_native();
+                    .expect("LHS register for ADD/SUB should have been allocated");
+                let lhs = Operand::Register(*lhs);
+                let rhs = if dag.get(instruction.get_input(1).node()).opcode().is_constant() {
+                    let value = dag.get(instruction.get_input(1).node()).opcode().get_constant();
+                    Operand::Immediate(value.bits_as_u64())
+                } else {
+                    let rhs = register_allocation.value_map
+                        .get(&instruction.get_input(1))
+                        .expect("RHS register for ADD/SUB should have been allocated");
+                    Operand::Register(*rhs)
+                };
                 Instruction::two_args(
                     instruction.opcode().get_native(),
-                    Operand::Register(*lhs),
-                    Operand::Register(*rhs),
-                    *ty,
-                )
-            }
-
-            Opcode::ADDri |
-            Opcode::SUBri => {
-                let lhs = register_allocation.value_map
-                    .get(&instruction.get_input(0))
-                    .expect("Left-hand side register for ADDri/SUBri should have been allocated");
-                let rhs = instruction.payload().get_constant().bits_as_u64();
-                let ty = instruction.get_output_type(0).get_native();
-                Instruction::two_args(
-                    instruction.opcode().get_native(),
-                    Operand::Register(*lhs),
-                    Operand::Immediate(rhs),
+                    lhs,
+                    rhs,
                     *ty,
                 )
             }
@@ -116,33 +108,33 @@ impl isa::ISA for ISA {
 }
 
 impl ISA {
-    fn lower_constant(&self, dag: &mut DAG<Self>, instruction: NodeId) {
-        let value = dag.get(instruction).payload().get_constant().clone();
-        let node = self.mov_reg_imm(dag, value);
-        dag.replace_node(instruction, node.node());
-    }
-
     fn lower_simple_arithmetic(&self, dag: &mut DAG<Self>, instruction: NodeId) {
-        let node = dag.get(instruction);
-        let lhs = node.get_input(0);
-        let rhs = node.get_input(1);
-        let rhs_is_constant = dag.get(rhs.node()).opcode().is_constant();
-        let ty = node.get_output_type(0).get_native();
-
-        let opcode = Self::get_native_opcode_for_simple_arithmetic(node.opcode().get_generic(), rhs_is_constant);
-
-        let node = match rhs_is_constant {
-            true => {
-                let rhs_value = dag.get(rhs.node()).payload().get_constant().clone();
-                dag.add_native_node_with_payload(
-                    opcode,
-                    NodePayload::Constant(rhs_value),
-                    vec![lhs],
-                    vec![OutputType::Native(ty.clone())]
-                )
-            }
-            false => dag.add_native_node(opcode, vec![lhs,rhs], vec![OutputType::Native(ty.clone())])
+        // NOTE: if the LHS is a constant, we need to move it into a register first
+        // NOTE: this should technically never happen once we actually implement optimizations (constant folding and moving constants to the right)
+        let lhs = if dag.get(dag.get(instruction).get_input(0).node()).opcode().is_constant() {
+            let lhs_in_reg = dag.add_native_node(
+                Opcode::MOVri,
+                vec![dag.get(instruction).get_input(0)],
+                vec![OutputType::Native(dag.get(instruction).get_output_type(0).get_native().clone())],
+            );
+            dag.get_value(lhs_in_reg, 0)
+        } else {
+            dag.get(instruction).get_input(0)
         };
+        let node = dag.get(instruction);
+        let rhs = node.get_input(1);
+        let ty = node.get_output_type(0).get_native().clone();
+
+        if dag.get(lhs.node()).opcode().is_constant() {
+        }
+
+        let opcode = match node.opcode().get_generic() {
+            GenericOpcode::Add => Opcode::ADD,
+            GenericOpcode::Sub => Opcode::SUB,
+            _ => unreachable!()
+        };
+
+        let node = dag.add_native_node(opcode, vec![lhs,rhs], vec![OutputType::Native(ty.clone())]);
         dag.replace_node(instruction, node);
     }
 
@@ -156,47 +148,18 @@ impl ISA {
 
         dag.replace_node(instruction, ret);
     }
-
-    // mov reg, arg
-    fn mov_reg_imm(&self, dag: &mut DAG<Self>, value: ir::Constant) -> Value {
-        let ty = isa::ISA::lower_type(self, value.ty());
-        let mov = dag.add_native_node_with_payload(
-            Opcode::MOVri,
-            NodePayload::Constant(value),
-            vec![],
-            vec![OutputType::Native(ty)],
-        );
-        dag.get_value(mov, 0)
-    }
-
-    fn get_native_opcode_for_simple_arithmetic(opcode: GenericOpcode, is_rhs_constant: bool) -> Opcode {
-        match (opcode, is_rhs_constant) {
-            (GenericOpcode::Add, false) => Opcode::ADDrr,
-            (GenericOpcode::Add, true) => Opcode::ADDri,
-            (GenericOpcode::Sub, false) => Opcode::SUBrr,
-            (GenericOpcode::Sub, true) => Opcode::SUBri,
-
-            _ => panic!("{} is not a simple arithmetic operation", opcode),
-        }
-    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Opcode {
-    /// mov <reg>, <payload constant>; () -> (value)
+    /// mov <reg>, <imm>; (value) -> (value)
     MOVri,
 
     /// add <reg>, <reg>; (lhs, rhs) -> (value)
-    ADDrr,
-
-    /// add <reg>, <payload constant>; (lhs) -> (value)
-    ADDri,
+    ADD,
 
     /// sub <reg>, <reg>; (lhs, rhs) -> (value)
-    SUBrr,
-
-    /// sub <reg>, <payload constant>; (lhs) -> (value)
-    SUBri,
+    SUB,
 
     /// ret; (ctrl, value) -> ()
     RET,
@@ -205,10 +168,8 @@ pub enum Opcode {
 impl isa::NativeOpcode for Opcode {
     fn is_input_overwritten_by_output(&self, input: PortId) -> Option<PortId> {
         match self {
-            Opcode::ADDrr |
-            Opcode::ADDri |
-            Opcode::SUBrr |
-            Opcode::SUBri => {
+            Opcode::ADD |
+            Opcode::SUB => {
                 match input {
                     0 => Some(0),
                     _ => None,
@@ -225,10 +186,8 @@ impl Display for Opcode {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             Opcode::MOVri => write!(f, "MOV"),
-            Opcode::ADDrr |
-            Opcode::ADDri => write!(f, "ADD"),
-            Opcode::SUBrr |
-            Opcode::SUBri => write!(f, "SUB"),
+            Opcode::ADD => write!(f, "ADD"),
+            Opcode::SUB => write!(f, "SUB"),
             Opcode::RET => write!(f, "RET"),
         }
     }
@@ -238,6 +197,15 @@ impl Display for Opcode {
 pub enum Operand {
     Register(Register),
     Immediate(u64),
+}
+
+impl Operand {
+    fn to_string(&self, ty: Type) -> String {
+        match self {
+            Operand::Register(reg) => reg.to_string(ty),
+            Operand::Immediate(value) => ty.print_unsigned_in_hex(*value),
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -264,50 +232,16 @@ impl Instruction {
 
 impl isa::NativeInstruction for Instruction {}
 
-impl ToString for Instruction {
-    fn to_string(&self) -> String {
-        match self.opcode {
-            Opcode::MOVri => match (self.operands[0], self.operands[1]) {
-                (Some((dst, dst_ty)), Some((src, src_ty))) => {
-                    assert!(dst_ty == src_ty, "Operands of mov must have the same type");
-                    match (dst, src) {
-                        (Operand::Register(reg), Operand::Immediate(imm)) =>
-                            format!("mov {}, {}", reg.to_string(dst_ty), src_ty.print_unsigned_in_hex(imm)),
-
-                        _ => panic!("Invalid combination of operands for mov")
-                    }
-                }
-
-                _ => panic!("MOV instruction must have two operands")
-            }
-
-            Opcode::ADDrr |
-            Opcode::SUBrr => match (self.operands[0], self.operands[1]) {
-                (Some((lhs, lhs_ty)), Some((rhs, rhs_ty))) => {
-                    assert!(lhs_ty == rhs_ty, "Operands of arithmetic operations must have the same type");
-                    match (lhs, rhs) {
-                        (Operand::Register(lhs_reg), Operand::Register(rhs_reg)) =>
-                            format!("{} {}, {}", self.opcode.to_string().to_lowercase(), lhs_reg.to_string(lhs_ty), rhs_reg.to_string(rhs_ty)),
-
-                        _ => panic!("Invalid combination of operands for {}", self.opcode)
-                    }
-                }
-
-                _ => panic!("Arithmetic instruction must have two operands")
-            }
-
-            Opcode::ADDri |
-            Opcode::SUBri => match (self.operands[0], self.operands[1]) {
-                (Some((Operand::Register(lhs_reg), lhs_ty)), Some((Operand::Immediate(rhs_imm), rhs_ty))) => {
-                    assert!(lhs_ty == rhs_ty, "Operands of arithmetic operations must have the same type");
-                    format!("{} {}, {}", self.opcode.to_string().to_lowercase(), lhs_reg.to_string(lhs_ty), rhs_ty.print_unsigned_in_hex(rhs_imm))
-                }
-
-                _ => panic!("Arithmetic instruction with an immediate must have one register operand and one immediate operand")
-            }
-
-            Opcode::RET => "ret".to_string()
+impl Display for Instruction {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "{}", self.opcode)?;
+        if let Some((lhs, ty)) = self.operands[0] {
+            write!(f, " {}", lhs.to_string(ty))?;
         }
+        if let Some((rhs, ty)) = self.operands[1] {
+            write!(f, ", {}", rhs.to_string(ty))?;
+        }
+        Ok(())
     }
 }
 

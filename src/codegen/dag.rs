@@ -1,4 +1,3 @@
-use crate::ir;
 use super::isa::*;
 use super::opcode::*;
 use core::panic;
@@ -32,7 +31,6 @@ impl Display for Value {
 pub struct Node<I: ISA> {
     id: NodeId,
     opcode: Opcode<I>,
-    payload: NodePayload<I>,
     inputs: Vec<NodeInput<I>>,
     outputs: Vec<NodeOutput<I>>,
 }
@@ -42,8 +40,8 @@ impl <I: ISA> Node<I> {
         self.id
     }
 
-    pub fn opcode(&self) -> Opcode<I> {
-        self.opcode
+    pub fn opcode(&self) -> &Opcode<I> {
+        &self.opcode
     }
 
     pub fn is_generic(&self) -> bool {
@@ -55,10 +53,6 @@ impl <I: ISA> Node<I> {
 
     pub fn is_native(&self) -> bool {
         !self.is_generic()
-    }
-
-    pub fn payload(&self) -> &NodePayload<I> {
-        &self.payload
     }
 
     pub fn inputs(&self) -> impl DoubleEndedIterator<Item = &Value> {
@@ -125,14 +119,6 @@ impl <I: ISA> ToString for Node<I> {
     fn to_string(&self) -> String {
         let mut result = format!("#{}: {}", self.id.0, self.opcode.to_string());
 
-        match &self.payload {
-            NodePayload::None => (),
-            NodePayload::Constant(value) => {
-                result.push_str(format!(" (constant = {})", value).as_str());
-            }
-            NodePayload::Register(reg) => result.push_str(format!(" (register = {})", reg.to_string()).as_str()),
-        }
-
         result.push_str(": (");
         for input in &self.inputs {
             result.push_str(format!("#{}:{}, ", input.value.0.0, input.value.1).as_str());
@@ -151,59 +137,6 @@ impl <I: ISA> ToString for Node<I> {
         }
         result.push(')');
         result
-    }
-}
-
-pub enum NodePayload<I: ISA> {
-    None,
-    Constant(ir::Constant),
-    Register(I::Register),
-}
-
-impl <I: ISA> NodePayload<I> {
-    pub fn is_none(&self) -> bool {
-        match self {
-            NodePayload::None => true,
-            _ => false,
-        }
-    }
-
-    pub fn is_constant(&self) -> bool {
-        match self {
-            NodePayload::Constant(_) => true,
-            _ => false,
-        }
-    }
-
-    pub fn is_register(&self) -> bool {
-        match self {
-            NodePayload::Register(_) => true,
-            _ => false,
-        }
-    }
-
-    pub fn get_constant(&self) -> &ir::Constant {
-        match self {
-            NodePayload::Constant(value) => value,
-            _ => panic!("Node payload is not a constant"),
-        }
-    }
-
-    pub fn get_register(&self) -> &I::Register {
-        match self {
-            NodePayload::Register(reg) => reg,
-            _ => panic!("Node payload is not a register"),
-        }
-    }
-}
-
-impl <I: ISA> Clone for NodePayload<I> {
-    fn clone(&self) -> Self {
-        match self {
-            NodePayload::None => NodePayload::None,
-            NodePayload::Constant(value) => NodePayload::Constant(value.clone()),
-            NodePayload::Register(reg) => NodePayload::Register(reg.clone()),
-        }
     }
 }
 
@@ -272,20 +205,16 @@ impl <I: ISA> DAG<I> {
         }
     }
 
-    pub fn add_generic_node(&mut self, opcode: GenericOpcode, inputs: Vec<Value>, outputs: Vec<OutputType<I>>) -> NodeId {
-        self.add_generic_node_with_payload(opcode, NodePayload::None, inputs, outputs)
+    pub fn null_value() -> Value {
+        Value(NodeId(usize::MAX), usize::MAX)
+    }
+
+    pub fn add_generic_node(&mut self, opcode: GenericOpcode<I>, inputs: Vec<Value>, outputs: Vec<OutputType<I>>) -> NodeId {
+        self.add_node(Opcode::Generic(opcode), inputs, outputs)
     }
 
     pub fn add_native_node(&mut self, opcode: I::Opcode, inputs: Vec<Value>, outputs: Vec<OutputType<I>>) -> NodeId {
-        self.add_native_node_with_payload(opcode, NodePayload::None, inputs, outputs)
-    }
-
-    pub fn add_generic_node_with_payload(&mut self, opcode: GenericOpcode, payload: NodePayload<I>, inputs: Vec<Value>, outputs: Vec<OutputType<I>>) -> NodeId {
-        self.add_node_with_payload(Opcode::<I>::generic(opcode), payload, inputs, outputs)
-    }
-
-    pub fn add_native_node_with_payload(&mut self, opcode: I::Opcode, payload: NodePayload<I>, inputs: Vec<Value>, outputs: Vec<OutputType<I>>) -> NodeId {
-        self.add_node_with_payload(Opcode::native(opcode), payload, inputs, outputs)
+        self.add_node(Opcode::native(opcode), inputs, outputs)
     }
 
     pub fn get(&self, id: NodeId) -> &Node<I> {
@@ -355,6 +284,10 @@ impl <I: ISA> DAG<I> {
         let old_node_outputs = self.get(old_id).outputs.clone(); // Making a copy here to shut the borrow checker up
         for (port, output) in old_node_outputs.iter().enumerate() {
             for (user_id, user_port) in &output.uses {
+                // NOTE: this is so that the old node can still be used as the input of the new node
+                if *user_id == new_id {
+                    continue;
+                }
                 self.set_input(*user_id, *user_port, self.get_value(new_id, port));
             }
         }
@@ -364,7 +297,7 @@ impl <I: ISA> DAG<I> {
         }
     }
     
-    fn add_node_with_payload(&mut self, opcode: Opcode<I>, payload: NodePayload<I>, inputs: Vec<Value>, outputs: Vec<OutputType<I>>) -> NodeId {
+    fn add_node(&mut self, opcode: Opcode<I>, inputs: Vec<Value>, outputs: Vec<OutputType<I>>) -> NodeId {
         let id = NodeId(self.nodes.len());
         for (port, value) in inputs.iter().enumerate() {
             self.nodes[value.node().0].outputs[value.port()].uses.insert((id, port));
@@ -373,7 +306,6 @@ impl <I: ISA> DAG<I> {
         self.nodes.push(Node {
             id,
             opcode,
-            payload,
             inputs,
             outputs: outputs.into_iter().map(|ty| NodeOutput { ty, uses: HashSet::new() }).collect(),
         });

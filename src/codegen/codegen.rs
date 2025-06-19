@@ -59,7 +59,7 @@ pub fn codegen_function<I: ISA>(function: &ir::Function, isa: I, debug_dump: boo
             if instruction.is_generic() {
                 return None;
             }
-            let native_instruction = isa.build_native_instruction(instruction, &register_allocation);
+            let native_instruction = isa.build_native_instruction(&dag, instruction, &register_allocation);
             if native_instruction.is_none() {
                 panic!("Failed to build native instruction for {}", instruction.to_string());
             }
@@ -129,7 +129,10 @@ fn schedule<I: ISA>(dag: &DAG<I>) -> Vec<NodeId> {
 fn does_node_need_selection<I: ISA>(dag: &DAG<I>, node: NodeId) -> bool {
     match dag.get(node).opcode() {
         Opcode::Generic(opcode) => match opcode {
-            GenericOpcode::Enter => false,
+            GenericOpcode::Enter        |
+            GenericOpcode::Constant(..) |
+            GenericOpcode::Register(..) => false,
+
             _ => true,
         }
         Opcode::Native(_) => false,

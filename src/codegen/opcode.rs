@@ -1,15 +1,22 @@
 use super::isa::ISA;
+use crate::ir;
 use std::fmt::*;
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum GenericOpcode {
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum GenericOpcode<I: ISA> {
     // Special opcodes - they don't represent a real instruction
 
     /// Inputs:
     ///
     /// Outputs:
     ///   - the constant value
-    Constant,
+    Constant(ir::Constant),
+
+    /// Inputs:
+    /// 
+    /// Outputs:
+    ///  - the value in the register
+    Register(I::Register),
 
     // Arithmetic opcodes
  
@@ -38,20 +45,14 @@ pub enum GenericOpcode {
     Ret,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Opcode<I: ISA> {
-    Generic(GenericOpcode),
+    Generic(GenericOpcode<I>),
     Native(I::Opcode),
 }
 
-impl<I: ISA> Copy for Opcode<I> {}
-impl<I: ISA> Clone for Opcode<I> {
-    fn clone(&self) -> Self {
-        *self
-    }
-}
-
 impl<I: ISA> Opcode<I> {
-    pub fn generic(opcode: GenericOpcode) -> Self {
+    pub fn generic(opcode: GenericOpcode<I>) -> Self {
         Opcode::Generic(opcode)
     }
 
@@ -70,9 +71,9 @@ impl<I: ISA> Opcode<I> {
         !self.is_generic()
     }
 
-    pub fn get_generic(&self) -> GenericOpcode {
+    pub fn get_generic(&self) -> &GenericOpcode<I> {
         match self {
-            Opcode::Generic(opcode) => *opcode,
+            Opcode::Generic(opcode) => opcode,
             Opcode::Native(_) => panic!("Opcode is not generic"),
         }
     }
@@ -85,7 +86,25 @@ impl<I: ISA> Opcode<I> {
     }
 
     pub fn is_constant(&self) -> bool {
-        matches!(self, Opcode::Generic(GenericOpcode::Constant))
+        matches!(self, Opcode::Generic(GenericOpcode::Constant(..)))
+    }
+
+    pub fn get_constant(&self) -> &ir::Constant {
+        match self {
+            Opcode::Generic(GenericOpcode::Constant(constant)) => constant,
+            _ => panic!("Opcode is not a constant"),
+        }
+    }
+
+    pub fn is_register(&self) -> bool {
+        matches!(self, Opcode::Generic(GenericOpcode::Register(..)))
+    }
+
+    pub fn get_register(&self) -> &I::Register {
+        match self {
+            Opcode::Generic(GenericOpcode::Register(register)) => register,
+            _ => panic!("Opcode is not a register"),
+        }
     }
 }
 
@@ -98,15 +117,15 @@ impl<I: ISA> Display for Opcode<I> {
     }
 }
 
-impl Display for GenericOpcode {
+impl<I: ISA> Display for GenericOpcode<I> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        let str = match self {
-            GenericOpcode::Constant => "Constant",
-            GenericOpcode::Add => "Add",
-            GenericOpcode::Sub => "Sub",
-            GenericOpcode::Enter => "Enter",
-            GenericOpcode::Ret => "Ret",
-        };
-        write!(f, "{}", str)
+        match self {
+            GenericOpcode::Constant(constant) => write!(f, "Constant({})", constant),
+            GenericOpcode::Register(register) => write!(f, "Register({})", register.to_string()),
+            GenericOpcode::Add => write!(f, "Add"),
+            GenericOpcode::Sub => write!(f, "Sub"),
+            GenericOpcode::Enter => write!(f, "Enter"),
+            GenericOpcode::Ret => write!(f, "Ret"),
+        }
     }
 }

@@ -29,6 +29,13 @@ pub fn allocate_registers<I: ISA>(dag: &DAG<I>, order: &[NodeId], isa: &I) -> Re
                 continue;
             }
 
+            if dag.get(value.node()).is_generic() {
+                // At this point the only generic nodes that produce register values are constants,
+                // which the ISA will have either lowered into native instructions or will use as
+                // immediate values in instructions.
+                continue;
+            }
+
             if value_map.contains_key(value) {
                 let reg = value_map[value];
                 assert!(

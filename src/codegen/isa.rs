@@ -19,7 +19,7 @@ pub trait ISA: Sized + PartialEq {
 
     fn select_instruction(&self, dag: &mut DAG<Self>, instruction: NodeId);
 
-    fn build_native_instruction(&self, instruction: &Node<Self>, register_allocation: &RegisterAllocationResult<Self>) -> Option<Self::Instruction>;
+    fn build_native_instruction(&self, dag: &DAG<Self>, instruction: &Node<Self>, register_allocation: &RegisterAllocationResult<Self>) -> Option<Self::Instruction>;
 
     fn get_usable_registers(&self) -> Vec<Self::Register>;
 }

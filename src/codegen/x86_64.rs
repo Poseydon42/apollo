@@ -52,14 +52,14 @@ impl isa::ISA for ISA {
         }
 
         Some(match instruction.opcode().get_native() {
-            Opcode::MOVri => {
+            Opcode::MOV => {
                 let ty = instruction.get_output_type(0).get_native();
                 let value = dag.get(instruction.get_input(0).node()).opcode().get_constant();
                 let dst = register_allocation.value_map
                     .get(&instruction.get_output(0))
                     .expect("Destination register for MOVri should have been allocated");
                 Instruction::two_args(
-                    Opcode::MOVri,
+                    Opcode::MOV,
                     Operand::Register(*dst),
                     Operand::Immediate(value.bits_as_u64()),
                     *ty,
@@ -113,7 +113,7 @@ impl ISA {
         // NOTE: this should technically never happen once we actually implement optimizations (constant folding and moving constants to the right)
         let lhs = if dag.get(dag.get(instruction).get_input(0).node()).opcode().is_constant() {
             let lhs_in_reg = dag.add_native_node(
-                Opcode::MOVri,
+                Opcode::MOV,
                 vec![dag.get(instruction).get_input(0)],
                 vec![OutputType::Native(dag.get(instruction).get_output_type(0).get_native().clone())],
             );
@@ -152,16 +152,22 @@ impl ISA {
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Opcode {
-    /// mov <reg>, <imm>; (value) -> (value)
-    MOVri,
+    /// Notation:
+    ///  - const: a constant value - the argument is provided by GenericOpcode::Constant
+    ///  - reg:   a specific register - the argument is provided by GenericOpcode::Register
+    ///  - vreg:  a virtual register - the argument is provided by any other generic or native node
 
-    /// add <reg>, <reg>; (lhs, rhs) -> (value)
+    /// mov <vreg>, <const/reg/vreg>; (value) -> (value)
+    MOV,
+
+    /// add <vreg>, <const/reg/vreg>; (lhs, rhs) -> (value)
     ADD,
 
-    /// sub <reg>, <reg>; (lhs, rhs) -> (value)
+    /// sub <vreg>, <const/reg/vreg>; (lhs, rhs) -> (value)
     SUB,
 
-    /// ret; (ctrl, value) -> ()
+    /// ret; (ctrl, value) -> ()4
+    /// NOTE: the x86_64 ret instruction does not actually take any arguments, but we do take an argument here to ensure it is not eliminated by DCE
     RET,
 }
 
@@ -176,7 +182,7 @@ impl isa::NativeOpcode for Opcode {
                 }
             }
 
-            Opcode::MOVri |
+            Opcode::MOV |
             Opcode::RET => None,
         }   
     }
@@ -185,7 +191,7 @@ impl isa::NativeOpcode for Opcode {
 impl Display for Opcode {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
-            Opcode::MOVri => write!(f, "MOV"),
+            Opcode::MOV => write!(f, "MOV"),
             Opcode::ADD => write!(f, "ADD"),
             Opcode::SUB => write!(f, "SUB"),
             Opcode::RET => write!(f, "RET"),

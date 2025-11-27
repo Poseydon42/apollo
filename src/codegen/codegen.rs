@@ -5,16 +5,18 @@ use super::NativeFunction;
 use super::opcode::*;
 use super::register_allocator::*;
 use crate::ir;
-use std::collections::HashSet;
+use std::collections::{
+    BinaryHeap,
+    HashSet,
+};
+use std::cmp::Ordering;
 
 pub fn codegen_function<I: ISA>(function: &ir::Function, isa: I, debug_dump: bool) -> Option<NativeFunction> {
     let IRLoweringResult { mut dag } = lower_basic_block(function, &function.code, &isa);
 
     if debug_dump {
         println!("Initial DAG:");
-        for node in dag.nodes() {
-            println!("\t{}", node.to_string());
-        }
+        dump_graph(&dag);
     }
 
     let mut selection_queue = create_selection_queue(&dag);
@@ -23,21 +25,22 @@ pub fn codegen_function<I: ISA>(function: &ir::Function, isa: I, debug_dump: boo
         if dag.get(node_id).is_native() {
             continue;
         }
-        println!("\tProcessing node: {:?}", node_id);
         isa.select_instruction(&mut dag, node_id);
     }
 
     if debug_dump {
         println!("Final DAG:");
-        for node in dag.nodes() {
-            if node.is_dead() && node.id() != dag.root().expect("DAG must contain a root after instruction selection") {
-                continue;
-            }
-            println!("\t{}", node.to_string());
+        dump_graph(&dag);
+    }
+
+    for node in dag.nodes() {
+        println!("\t{} has {} uses", node, node.all_uses().count());
+        for (use_node, _) in node.all_uses().filter(|(node, _)| !dag.get(*node).is_dead()) {
+            println!("\t\tused by {}", dag.get(*use_node));
         }
     }
 
-    let schedule = schedule(&dag);
+    let mut schedule = schedule(&dag);
     if debug_dump {
         println!("Scheduled instructions:");
         for node in schedule.iter() {
@@ -45,7 +48,7 @@ pub fn codegen_function<I: ISA>(function: &ir::Function, isa: I, debug_dump: boo
         }
     }
 
-    let register_allocation = allocate_registers(&dag, &schedule, &isa);
+    let register_allocation = allocate_registers(&mut dag, &mut schedule, &isa);
     if debug_dump {
         println!("Register allocation:");
         for (value, reg) in register_allocation.value_map.iter() {
@@ -66,6 +69,16 @@ pub fn codegen_function<I: ISA>(function: &ir::Function, isa: I, debug_dump: boo
             Some(native_instruction.unwrap())
         })
         .collect();
+    let mut native_instructions: Vec<_> = isa
+        .generate_prologue()
+        .into_iter()
+        .chain(native_instructions.into_iter())
+        .collect();
+    // NOTE: we should insert the epilogue before ret
+    native_instructions.splice(
+        native_instructions.len() - 1..native_instructions.len() - 1,
+         isa.generate_epilogue().into_iter()
+    );
     if debug_dump {
         println!("Native instructions:");
         for instruction in native_instructions.iter() {
@@ -105,20 +118,60 @@ fn create_selection_queue<I: ISA>(dag: &DAG<I>) -> Vec<NodeId> {
 }
 
 fn schedule<I: ISA>(dag: &DAG<I>) -> Vec<NodeId> {
-    let mut result = Vec::new();
-    let mut visited = HashSet::new();
-    let mut stack = vec![dag.root().expect("DAG must contain a root before instruction selection")];
-    
-    while let Some(node) = stack.pop() {
-        visited.insert(node);
-        result.push(node);
-
-        // NOTE: we want the first input to be the furthest away from the current node
-        // just in case it is a control flow edge.
-        for input in dag.get(node).inputs() {
-            if !visited.contains(&input.node()) {
-                stack.push(input.node());
+    #[derive(PartialEq, Eq, Debug)]
+    struct NodeEntry {
+        node: NodeId,
+        has_ctrl: bool,
+    }
+    impl PartialOrd for NodeEntry {
+        fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+            if self.has_ctrl && !other.has_ctrl {
+                // We want nodes with control flow to be scheduled last, which would
+                // put them *first* in the final ordering (since it's reversed at the end).
+                Some(Ordering::Less)
             }
+            else if !self.has_ctrl && other.has_ctrl {
+                Some(Ordering::Greater)
+            }
+            else {
+                Some(Ordering::Equal)
+            }
+        }
+    }
+    impl Ord for NodeEntry {
+        fn cmp(&self, other: &Self) -> Ordering {
+            self.partial_cmp(other).unwrap()
+        }
+    }
+
+    let mut available = BinaryHeap::new();
+    let mut scheduled = HashSet::new();
+    let mut result = Vec::new();
+    
+    let root = dag.root().expect("DAG must be complete when scheduling");
+    available.push(NodeEntry { node: root, has_ctrl: true });
+    while let Some(node) = available.pop() {
+        result.push(node.node);
+        scheduled.insert(node.node);
+
+        for input in dag.get(node.node).inputs() {
+            let input_node = input.node();
+            if scheduled.contains(&input_node) {
+                continue;
+            }
+
+            let all_uses_scheduled =
+                dag.get(input_node)
+                .all_uses()
+                .all(|(use_node, _)| scheduled.contains(&use_node));
+            if !all_uses_scheduled {
+                continue;
+            }
+
+            // NOTE: this will not be true for the last node of the DAG control flow (i.e. ret/branch), but we will have processed
+            //       it by now anyway as it's the root of the DAG, which is added to the priority queue anyway.
+            let has_ctrl = dag.get(input_node).outputs().any(|value| dag.get_value_type(value).is_control());
+            available.push(NodeEntry { node: input_node, has_ctrl });
         }
     }
 
@@ -136,5 +189,14 @@ fn does_node_need_selection<I: ISA>(dag: &DAG<I>, node: NodeId) -> bool {
             _ => true,
         }
         Opcode::Native(_) => false,
+    }
+}
+
+fn dump_graph<I: ISA>(dag: &DAG<I>) {
+    for node in dag.nodes() {
+        if node.is_dead() && node.id() != dag.root().expect("DAG must contain a root after instruction selection") {
+            continue;
+        }
+        println!("\t{}", node);
     }
 }

@@ -1,6 +1,6 @@
 use crate::ir;
 use super::dag::*;
-use super::isa::ISA;
+use super::isa::*;
 use super::opcode::*;
 use std::collections::HashMap;
 
@@ -21,6 +21,7 @@ struct IRLowering<'a, I: ISA> {
     control_token: Value,
     terminator_node: Option<NodeId>,
     lowered_values: HashMap<ir::InstructionRef, Value>,
+    next_stack_offset: u32,
 }
 
 impl <'a, I: ISA> IRLowering<'a, I> {
@@ -37,6 +38,7 @@ impl <'a, I: ISA> IRLowering<'a, I> {
             control_token,
             terminator_node: None,
             lowered_values: HashMap::new(),
+            next_stack_offset: 0,
         }
     }
 
@@ -58,9 +60,11 @@ impl <'a, I: ISA> IRLowering<'a, I> {
             ir::Instruction::Add(lhs, rhs) => self.lower_arithmetic(GenericOpcode::Add, value.unwrap(), lhs, rhs),
             ir::Instruction::Sub(lhs, rhs) => self.lower_arithmetic(GenericOpcode::Sub, value.unwrap(), lhs, rhs),
 
-            ir::Instruction::Return(value) => self.lower_return(value),
+            ir::Instruction::Allocate(ty) => self.lower_allocate(ty, value.unwrap()),
+            ir::Instruction::Load { location, ty } => self.lower_load(location, ty, value.unwrap()),
+            ir::Instruction::Store { value: store_value, location } => self.lower_store(store_value, location, value.unwrap()),
 
-            _ => todo!(),
+            ir::Instruction::Return(value) => self.lower_return(value),
         }
     }
 
@@ -80,6 +84,65 @@ impl <'a, I: ISA> IRLowering<'a, I> {
             ]
         );
         let value = self.dag.get_value(result, 0);
+        self.set_lowered_value(ir_value, value);
+    }
+
+    fn lower_allocate(&mut self, ty: &ir::Ty, ir_value: ir::Value) {
+        let ty = self.isa.lower_type(ty);
+        let size = ty.size();
+        self.next_stack_offset += size;
+        let offset = self.next_stack_offset;
+
+        let frame_base = self.get_register(self.isa.get_stack_frame_base_register(), self.isa.get_pointer_type());
+        let offset = self.get_constant(ir::Constant::int(offset as i32));
+        let addr = self.dag.add_generic_node(
+            GenericOpcode::Sub,
+            vec![
+                frame_base,
+                offset,
+            ],
+            vec![
+                self.get_pointer_type()
+            ]
+        );
+        let addr = self.dag.get_value(addr, 0);
+        self.set_lowered_value(ir_value, addr);
+    }
+
+    fn lower_load(&mut self, location: &ir::Value, ty: &ir::Ty, ir_value: ir::Value) {
+        let location = self.get_lowered_value(location);
+        let ty = self.isa.lower_type(ty);
+        let load = self.dag.add_generic_node(
+            GenericOpcode::Load,
+            vec![
+                self.control_token,
+                location,
+            ],
+            vec![
+                OutputType::Control,
+                OutputType::Native(ty)
+            ]
+        );
+        let value = self.dag.get_value(load, 1);
+        self.control_token = self.dag.get_value(load, 0);
+        self.set_lowered_value(ir_value, value);
+    }
+
+    fn lower_store(&mut self, value: &ir::Value, location: &ir::Value, ir_value: ir::Value) {
+        let value = self.get_lowered_value(value);
+        let location = self.get_lowered_value(location);
+        let store = self.dag.add_generic_node(
+            GenericOpcode::Store,
+            vec![
+                self.control_token,
+                location,
+                value,
+            ],
+            vec![
+                OutputType::Control
+            ]
+        );
+        self.control_token = self.dag.get_value(store, 0);
         self.set_lowered_value(ir_value, value);
     }
 
@@ -126,5 +189,18 @@ impl <'a, I: ISA> IRLowering<'a, I> {
             vec![ OutputType::Native(ty) ]
         );
         self.dag.get_value(constant, 0)
+    }
+
+    fn get_register(&mut self, reg: I::Register, ty: I::Type) -> Value {
+        let register = self.dag.add_generic_node(
+            GenericOpcode::Register(reg),
+            vec![],
+            vec![ OutputType::Native(ty) ]
+        );
+        self.dag.get_value(register, 0)
+    }
+
+    fn get_pointer_type(&self) -> OutputType<I> {
+        OutputType::Native(self.isa.get_pointer_type())
     }
 }

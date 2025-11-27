@@ -18,6 +18,7 @@ pub enum GenericOpcode<I: ISA> {
     ///  - the value in the register
     Register(I::Register),
 
+
     // Arithmetic opcodes
  
     /// Inputs:
@@ -27,6 +28,25 @@ pub enum GenericOpcode<I: ISA> {
     /// Outputs:
     ///   - Result
     Add, Sub,
+
+
+    // Memory opcodes
+
+    /// Inputs:
+    ///  - control token
+    ///  - the address to load from
+    /// Outputs:
+    ///  - control token
+    ///  - loaded value
+    Load,
+
+    /// Inputs:
+    ///  - control token
+    ///  - address to store to
+    ///  - value to store
+    ///  Outputs:
+    ///   - control token
+    Store,
 
 
     // Control flow
@@ -124,6 +144,8 @@ impl<I: ISA> Display for GenericOpcode<I> {
             GenericOpcode::Register(register) => write!(f, "Register({})", register.to_string()),
             GenericOpcode::Add => write!(f, "Add"),
             GenericOpcode::Sub => write!(f, "Sub"),
+            GenericOpcode::Load => write!(f, "Load"),
+            GenericOpcode::Store => write!(f, "Store"),
             GenericOpcode::Enter => write!(f, "Enter"),
             GenericOpcode::Ret => write!(f, "Ret"),
         }

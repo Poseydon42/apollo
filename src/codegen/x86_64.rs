@@ -34,16 +34,33 @@ impl isa::ISA for ISA {
     fn select_instruction(&self, dag: &mut DAG<Self>, instruction: NodeId) {
         let node = dag.get(instruction);
         assert!(node.is_generic(), "ISA shouldn't be asked to lower a native opcode");
+
+        #[allow(unreachable_patterns)]
         match node.opcode().get_generic() {
-            GenericOpcode::Constant(..) => panic!("Constant nodes should not be a target for instruction selection"),
+            GenericOpcode::Enter        |
+            GenericOpcode::Constant(..) |
+            GenericOpcode::Register(..) => panic!("Special generic node {} should not be a target for instruction selection", node.opcode().get_generic()),
 
             GenericOpcode::Add |
             GenericOpcode::Sub => self.lower_simple_arithmetic(dag, instruction),
 
+            GenericOpcode::Load => self.lower_load(dag, instruction),
+            GenericOpcode::Store => self.lower_store(dag, instruction),
+
             GenericOpcode::Ret => self.lower_ret(dag, instruction),
-            
-            unsupported => panic!("Unsupported generic opcode {}", unsupported.to_string()),
+
+            _ => todo!()
         }
+    }
+
+    fn insert_register_copy(&self, dag: &mut DAG<Self>, value: Value) -> Value {
+        let ty = dag.get_value_type(value).clone();
+        let copy_node = dag.add_native_node(
+            Opcode::MOV,
+            vec![value],
+            vec![ty],
+        );
+        dag.get_value(copy_node, 0)
     }
 
     fn build_native_instruction(&self, dag: &DAG<Self>, instruction: &Node<Self>, register_allocation: &RegisterAllocationResult<Self>) -> Option<Self::Instruction> {
@@ -54,15 +71,61 @@ impl isa::ISA for ISA {
         Some(match instruction.opcode().get_native() {
             Opcode::MOV => {
                 let ty = instruction.get_output_type(0).get_native();
-                let value = dag.get(instruction.get_input(0).node()).opcode().get_constant();
+                let value_opcode = dag.get(instruction.get_input(0).node()).opcode();
+                let value = if value_opcode.is_constant() {
+                    Operand::Immediate(value_opcode.get_constant().bits_as_u64())
+                } else if value_opcode.is_register() {
+                    Operand::Register(*value_opcode.get_register())
+                } else {
+                    unimplemented!();
+                };
                 let dst = register_allocation.value_map
                     .get(&instruction.get_output(0))
                     .expect("Destination register for MOVri should have been allocated");
                 Instruction::two_args(
                     Opcode::MOV,
                     Operand::Register(*dst),
-                    Operand::Immediate(value.bits_as_u64()),
+                    value,
                     *ty,
+                )
+            }
+
+            Opcode::MOV_LOAD => {
+                let addr = register_allocation.value_map
+                    .get(&instruction.get_input(1))
+                    .expect("Address register for MOV_LOAD should have been allocated");
+                let output = register_allocation.value_map
+                    .get(&instruction.get_output(1))
+                    .expect("Output register for MOV_LOAD should have been allocated");
+                let ty = instruction.get_output_type(1).get_native();
+                Instruction::two_args(
+                    Opcode::MOV_LOAD,
+                    Operand::Register(*output),
+                    Operand::MemReg(*addr),
+                    *ty,
+                )
+            }
+
+            Opcode::MOV_STORE => {
+                let addr = register_allocation.value_map
+                    .get(&instruction.get_input(1))
+                    .expect("Address register for MOV_STORE should have been allocated");
+
+                let value_node = dag.get(instruction.get_input(2).node());
+                let value = if value_node.opcode().is_constant() {
+                    Operand::Immediate(value_node.opcode().get_constant().bits_as_u64())
+                } else {
+                    Operand::Register(
+                        *register_allocation.value_map
+                        .get(&instruction.get_input(2))
+                        .expect("Non-immediate value of MOV_STORE should have been allocated a register")
+                    )
+                };
+                Instruction::two_args(
+                    Opcode::MOV_STORE,
+                    Operand::MemReg(*addr),
+                    value,
+                    dag.get_value_type(instruction.get_input(2)).get_native().clone()
                 )
             }
 
@@ -91,7 +154,23 @@ impl isa::ISA for ISA {
             }
 
             Opcode::RET => Instruction::no_args(instruction.opcode().get_native()),
+
+            _ => unimplemented!(),
         })
+    }
+
+    fn generate_prologue(&self) -> Vec<Self::Instruction> {
+        vec![
+            Instruction::one_arg(Opcode::PUSH, Operand::Register(Register::RBP), self.get_pointer_type()),
+            Instruction::two_args(Opcode::MOV, Operand::Register(Register::RBP), Operand::Register(Register::RSP), self.get_pointer_type()),
+        ]
+    }
+
+    fn generate_epilogue(&self) -> Vec<Self::Instruction> {
+        vec![
+            Instruction::two_args(Opcode::MOV, Operand::Register(Register::RSP), Operand::Register(Register::RBP), self.get_pointer_type()),
+            Instruction::one_arg(Opcode::POP, Operand::Register(Register::RBP), self.get_pointer_type()),
+        ]
     }
 
     fn get_usable_registers(&self) -> Vec<Self::Register> {
@@ -104,6 +183,10 @@ impl isa::ISA for ISA {
             Register::R10,
             Register::R11,
         ]
+    }
+
+    fn get_stack_frame_base_register(&self) -> Self::Register {
+        Register::RBP
     }
 }
 
@@ -138,6 +221,44 @@ impl ISA {
         dag.replace_node(instruction, node);
     }
 
+    fn lower_load(&self, dag: &mut DAG<Self>, instruction: NodeId) {
+        let load = dag.get(instruction);
+        let ctrl = load.get_input(0);
+        let location = load.get_input(1);
+        let ty = load.get_output_type(1).get_native();
+        let load = dag.add_native_node(
+            Opcode::MOV_LOAD,
+            vec![
+                ctrl,
+                location
+            ],
+            vec![
+                OutputType::Control,
+                OutputType::Native(ty.clone())
+            ]
+        );
+        dag.replace_node(instruction, load);
+    }
+
+    fn lower_store(&self, dag: &mut DAG<Self>, instruction: NodeId) {
+        let store = dag.get(instruction);
+        let ctrl = store.get_input(0);
+        let location = store.get_input(1);
+        let value = store.get_input(2);
+        let store = dag.add_native_node(
+            Opcode::MOV_STORE,
+            vec![
+                ctrl,
+                location,
+                value
+            ],
+            vec![
+                OutputType::Control
+            ]
+        );
+        dag.replace_node(instruction, store);
+    }
+
     fn lower_ret(&self, dag: &mut DAG<Self>, instruction: NodeId) {
         let ret = dag.get(instruction);
         let ctrl  = ret.get_input(0);
@@ -151,6 +272,7 @@ impl ISA {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[allow(non_camel_case_types)]
 pub enum Opcode {
     /// Notation:
     ///  - const: a constant value - the argument is provided by GenericOpcode::Constant
@@ -160,15 +282,40 @@ pub enum Opcode {
     /// mov <vreg>, <const/reg/vreg>; (value) -> (value)
     MOV,
 
+    /// mov <vreg>, [<const/reg/vreg>]; (ctrl, addr) -> (ctrl, value)
+    MOV_LOAD,
+
+    /// mov [<const/reg/vreg>], <vreg>; (ctrl, addr, value) -> (ctrl)
+    MOV_STORE,
+
     /// add <vreg>, <const/reg/vreg>; (lhs, rhs) -> (value)
     ADD,
 
     /// sub <vreg>, <const/reg/vreg>; (lhs, rhs) -> (value)
     SUB,
 
-    /// ret; (ctrl, value) -> ()4
+    /// ret; (ctrl, value) -> ()
     /// NOTE: the x86_64 ret instruction does not actually take any arguments, but we do take an argument here to ensure it is not eliminated by DCE
     RET,
+
+    /// NOTE: these opcodes should not be used in the DAG, they are only used when building native instructions
+    PUSH,
+    POP,
+}
+
+impl Opcode {
+    fn asm_name(&self) -> &'static str {
+        match self {
+            Opcode::MOV => "mov",
+            Opcode::MOV_LOAD => "mov",
+            Opcode::MOV_STORE => "mov",
+            Opcode::ADD => "add",
+            Opcode::SUB => "sub",
+            Opcode::RET => "ret",
+            Opcode::PUSH => "push",
+            Opcode::POP => "pop",
+        }
+    }
 }
 
 impl isa::NativeOpcode for Opcode {
@@ -182,8 +329,12 @@ impl isa::NativeOpcode for Opcode {
                 }
             }
 
-            Opcode::MOV |
-            Opcode::RET => None,
+            Opcode::MOV       |
+            Opcode::MOV_LOAD  |
+            Opcode::MOV_STORE |
+            Opcode::PUSH      |
+            Opcode::POP       |
+            Opcode::RET       => None,
         }   
     }
 }
@@ -192,6 +343,10 @@ impl Display for Opcode {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             Opcode::MOV => write!(f, "MOV"),
+            Opcode::MOV_LOAD => write!(f, "MOV_LOAD"),
+            Opcode::MOV_STORE => write!(f, "MOV_STORE"),
+            Opcode::PUSH => write!(f, "PUSH"),
+            Opcode::POP => write!(f, "POP"),
             Opcode::ADD => write!(f, "ADD"),
             Opcode::SUB => write!(f, "SUB"),
             Opcode::RET => write!(f, "RET"),
@@ -201,8 +356,9 @@ impl Display for Opcode {
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Operand {
-    Register(Register),
     Immediate(u64),
+    Register(Register),
+    MemReg(Register), // [reg]
 }
 
 impl Operand {
@@ -210,6 +366,7 @@ impl Operand {
         match self {
             Operand::Register(reg) => reg.to_string(ty),
             Operand::Immediate(value) => ty.print_unsigned_in_hex(*value),
+            Operand::MemReg(reg) => format!("[{}]", reg.to_string(Type::QWord)),
         }
     }
 }
@@ -228,6 +385,13 @@ impl Instruction {
         }
     }
 
+    fn one_arg(opcode: Opcode, lhs: Operand, ty: Type) -> Self {
+        Self {
+            opcode,
+            operands: [Some((lhs, ty)), None]
+        }
+    }
+
     fn two_args(opcode: Opcode, lhs: Operand, rhs: Operand, ty: Type) -> Self {
         Self {
             opcode,
@@ -240,7 +404,7 @@ impl isa::NativeInstruction for Instruction {}
 
 impl Display for Instruction {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "{}", self.opcode)?;
+        write!(f, "{}", self.opcode.asm_name())?;
         if let Some((lhs, ty)) = self.operands[0] {
             write!(f, " {}", lhs.to_string(ty))?;
         }
@@ -377,15 +541,24 @@ impl Type {
     }
 }
 
-impl isa::NativeType for Type {}
-
-impl ToString for Type {
-    fn to_string(&self) -> String {
+impl isa::NativeType for Type {
+    fn size(&self) -> u32 {
         match self {
-            Type::Byte => "byte".to_string(),
-            Type::Word => "word".to_string(),
-            Type::DWord => "dword".to_string(),
-            Type::QWord => "qword".to_string(),
+            Type::Byte => 1,
+            Type::Word => 2,
+            Type::DWord => 4,
+            Type::QWord => 8,
+        }
+    }
+}
+
+impl Display for Type {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match self {
+            Type::Byte => write!(f, "byte"),
+            Type::Word => write!(f, "word"),
+            Type::DWord => write!(f, "dword"),
+            Type::QWord => write!(f, "qword"),
         }
     }
 }

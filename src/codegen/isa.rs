@@ -19,9 +19,21 @@ pub trait ISA: Sized + PartialEq {
 
     fn select_instruction(&self, dag: &mut DAG<Self>, instruction: NodeId);
 
+    fn insert_register_copy(&self, dag: &mut DAG<Self>, value: Value) -> Value;
+
     fn build_native_instruction(&self, dag: &DAG<Self>, instruction: &Node<Self>, register_allocation: &RegisterAllocationResult<Self>) -> Option<Self::Instruction>;
 
+    fn generate_prologue(&self) -> Vec<Self::Instruction>;
+
+    fn generate_epilogue(&self) -> Vec<Self::Instruction>;
+
     fn get_usable_registers(&self) -> Vec<Self::Register>;
+
+    fn get_stack_frame_base_register(&self) -> Self::Register;
+
+    fn get_pointer_type(&self) -> Self::Type {
+        self.lower_type(&ir::Ty::Ptr)
+    }
 }
 
 pub trait NativeOpcode : Copy + ToString + Eq {
@@ -37,5 +49,5 @@ pub trait NativeRegister : Copy + Debug + ToString + Eq + Hash {
 }
 
 pub trait NativeType : Copy + Debug + ToString + Eq {
-
+    fn size(&self) -> u32;
 }

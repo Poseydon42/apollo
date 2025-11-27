@@ -110,33 +110,39 @@ impl <I: ISA> Node<I> {
         self.outputs[port].uses.iter()
     }
 
+    pub fn all_uses<'a>(&self) -> impl Iterator<Item = &(NodeId, PortId)> {
+        self.outputs.iter().flat_map(|output| output.uses.iter())
+    }
+
     pub fn is_dead(&self) -> bool {
         self.outputs.iter().all(|output| output.uses.is_empty())
     }
 }
 
-impl <I: ISA> ToString for Node<I> {
-    fn to_string(&self) -> String {
-        let mut result = format!("#{}: {}", self.id.0, self.opcode.to_string());
+impl <I: ISA> Display for Node<I> {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        write!(f, "#{}: {}", self.id.0, self.opcode)?;
+        write!(f, ": (")?;
 
-        result.push_str(": (");
+        let mut first_input = true;
         for input in &self.inputs {
-            result.push_str(format!("#{}:{}, ", input.value.0.0, input.value.1).as_str());
+            if !first_input {
+                write!(f, ", ")?;
+            }
+            first_input = false;
+            write!(f, "{}", input.value)?;
         }
-        if self.inputs.len() > 0 {
-            result.pop(); // remove last comma
-            result.pop(); // remove last space
-        }
-        result.push_str(") -> (");
+
+        write!(f, ") -> (")?;
+        let mut first_output = true;
         for output in &self.outputs {
-            result.push_str(format!("{}, ", output.ty).as_str());
+            if !first_output {
+                write!(f, ", ")?;
+            }
+            first_output = false;
+            write!(f, "{}", output.ty)?;
         }
-        if self.outputs.len() > 0 {
-            result.pop(); // remove last comma
-            result.pop(); // remove last space
-        }
-        result.push(')');
-        result
+        write!(f, ")")
     }
 }
 
@@ -144,6 +150,16 @@ impl <I: ISA> ToString for Node<I> {
 pub enum OutputType<I: ISA> {
     Control,
     Native(I::Type),
+}
+
+impl <I: ISA> OutputType<I> {
+    pub fn is_control(&self) -> bool {
+        matches!(self, OutputType::Control)
+    }
+
+    pub fn is_native(&self) -> bool {
+        matches!(self, OutputType::Native(_))
+    }
 }
 
 impl <I: ISA> OutputType<I> {
@@ -247,6 +263,17 @@ impl <I: ISA> DAG<I> {
         node.uses(value.port())
     }
 
+    pub fn get_control_predecessor(&self, node: NodeId) -> Option<NodeId> {
+        let node = self.get(node);
+        for input in node.inputs() {
+            let input_type = self.get_value_type(*input);
+            if input_type.is_control() {
+                return Some(input.node());
+            }
+        }
+        None
+    }
+
     pub fn set_input(&mut self, node_id: NodeId, port: PortId, value: Value) {
         let node = self.get_mut(node_id);
         assert!(port < node.inputs.len(), "Input index out of bounds for node {}", node_id.0);
@@ -262,14 +289,31 @@ impl <I: ISA> DAG<I> {
         let old_node = self.get_mut(old_value.node());
         old_node.outputs[old_value.port()].uses.remove(&(node_id, port));
 
-        let new_node = self.get_mut(value.node());
-        new_node.outputs[value.port()].uses.insert((node_id, port));
+        if value != Self::null_value() {
+            let new_node = self.get_mut(value.node());
+            new_node.outputs[value.port()].uses.insert((node_id, port));
+        }
     }
 
     pub fn set_allowed_registers(&mut self, node_id: NodeId, port: PortId, registers: Vec<I::Register>) {
         let node = self.get_mut(node_id);
         assert!(port < node.inputs.len(), "Input index out of bounds for node {}", node_id.0);
         node.inputs[port].allowed_registers = registers;
+    }
+    
+    fn add_node(&mut self, opcode: Opcode<I>, inputs: Vec<Value>, outputs: Vec<OutputType<I>>) -> NodeId {
+        let id = NodeId(self.nodes.len());
+        for (port, value) in inputs.iter().enumerate() {
+            self.nodes[value.node().0].outputs[value.port()].uses.insert((id, port));
+        }
+        let inputs = inputs.into_iter().map(|value| NodeInput { value, allowed_registers: Vec::new() }).collect();
+        self.nodes.push(Node {
+            id,
+            opcode,
+            inputs,
+            outputs: outputs.into_iter().map(|ty| NodeOutput { ty, uses: HashSet::new() }).collect(),
+        });
+        id
     }
 
     pub fn replace_node(&mut self, old_id: NodeId, new_id: NodeId) {
@@ -295,21 +339,24 @@ impl <I: ISA> DAG<I> {
         if self.root == Some(old_id) {
             self.root = Some(new_id);
         }
-    }
-    
-    fn add_node(&mut self, opcode: Opcode<I>, inputs: Vec<Value>, outputs: Vec<OutputType<I>>) -> NodeId {
-        let id = NodeId(self.nodes.len());
-        for (port, value) in inputs.iter().enumerate() {
-            self.nodes[value.node().0].outputs[value.port()].uses.insert((id, port));
+
+        if self.get(old_id).is_dead() {
+            self.erase_node(old_id);
         }
-        let inputs = inputs.into_iter().map(|value| NodeInput { value, allowed_registers: Vec::new() }).collect();
-        self.nodes.push(Node {
-            id,
-            opcode,
-            inputs,
-            outputs: outputs.into_iter().map(|ty| NodeOutput { ty, uses: HashSet::new() }).collect(),
-        });
-        id
+    }
+
+    fn erase_node(&mut self, node: NodeId) {
+        if self.get(node).all_uses().next() != None {
+            panic!("Trying to erase node that has uses! DAG::erase_node() should only be used on nodes that are proven to not be used anymore (i.e. they are dead)");
+        }
+        if let Some(root) = self.root() && node == root {
+            panic!("Cannot erase the root of the DAG!");
+        }
+
+        // Go through all the inputs and set them to null
+        for input in 0..self.get(node).inputs().count() {
+            self.set_input(node, input, Self::null_value());
+        }
     }
     
     fn get_mut(&mut self, id: NodeId) -> &mut Node<I> {

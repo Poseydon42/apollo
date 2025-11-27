@@ -1,12 +1,13 @@
 use super::dag::*;
 use super::isa::*;
+use super::opcode::*;
 use std::collections::{HashMap, HashSet};
 
 pub struct RegisterAllocationResult<I: ISA> {
     pub value_map: HashMap<Value, I::Register>,
 }
 
-pub fn allocate_registers<I: ISA>(dag: &DAG<I>, order: &[NodeId], isa: &I) -> RegisterAllocationResult<I> {
+pub fn allocate_registers<I: ISA>(dag: &mut DAG<I>, order: &mut Vec<NodeId>, isa: &I) -> RegisterAllocationResult<I> {
     let mut value_map = HashMap::new();
     let mut free_registers : HashSet<_> = isa.get_usable_registers().into_iter().collect();
     let live_ranges = calculate_live_ranges(dag, order);
@@ -16,8 +17,9 @@ pub fn allocate_registers<I: ISA>(dag: &DAG<I>, order: &[NodeId], isa: &I) -> Re
         println!("\tValue {} live from {} to {}", value, start, end);
     }
 
-    // NOTE: we iterate in reverse orderw and map on encountering a use since restrictions on
+    // NOTE: we iterate in reverse order and map on encountering a use since restrictions on
     //       register classes are defined by the uses, not the defs.
+    let mut register_copies = Vec::new();
     for (idx, instruction) in order.iter().enumerate().rev() {
         let instruction = dag.get(*instruction);
         assert!(
@@ -29,10 +31,16 @@ pub fn allocate_registers<I: ISA>(dag: &DAG<I>, order: &[NodeId], isa: &I) -> Re
                 continue;
             }
 
-            if dag.get(value.node()).is_generic() {
-                // At this point the only generic nodes that produce register values are constants,
-                // which the ISA will have either lowered into native instructions or will use as
-                // immediate values in instructions.
+            let node = dag.get(value.node());
+
+            // Register nodes can be assigned their register directly. This also allows us to use special registers like RBP/RSP that
+            // would not be normally allocated to any virtual register.
+            if node.opcode().is_register() {
+                value_map.insert(*value, *node.opcode().get_register());
+                continue;
+            }
+            if node.opcode().is_constant() {
+                // The ISA will have either lowered constants into native instructions or will use as immediate values in instructions.
                 continue;
             }
 
@@ -46,7 +54,7 @@ pub fn allocate_registers<I: ISA>(dag: &DAG<I>, order: &[NodeId], isa: &I) -> Re
                 continue;
             }
 
-            if let Some(output) = instruction.opcode().get_native().is_input_overwritten_by_output(input) {
+            if let Some(output) = is_input_overwritten_by_output(instruction.opcode(), input) {
                 // If the output is placed in the same register as the current input, we can assign the same register.
                 assert!(
                     live_ranges[&value].1 == idx,
@@ -67,6 +75,38 @@ pub fn allocate_registers<I: ISA>(dag: &DAG<I>, order: &[NodeId], isa: &I) -> Re
                 panic!("No free allowed register available for value {}", value);
             }
         }
+
+        // We need to do one last minute correction: if we have an instruction that takes a fixed register as input,
+        // and then overwrites that input, we need to insert a copy to a new register before the instruction.
+        for input in 0..instruction.inputs().count() {
+            let Some(overwriting_output) = instruction.opcode().get_native().is_input_overwritten_by_output(input) else {
+                continue;
+            };
+
+            let input_value = instruction.get_input(input);
+            let input_node = dag.get(input_value.node());
+            if !input_node.opcode().is_register() {
+                continue;
+            }
+
+            let assigned_reg = value_map[&instruction.get_output(overwriting_output)];
+            register_copies.push((input_value, instruction.id(), input, assigned_reg));
+        }
+    }
+
+    for (value, instruction, port, reg) in &register_copies {
+        // Copy the value
+        let copied_value = isa.insert_register_copy(dag, *value);
+ 
+        // Use the copied value as input
+        dag.set_input(*instruction, *port, copied_value);
+
+        // Assign it a register
+        value_map.insert(copied_value, *reg);
+ 
+        // Insert the instruction into the schedule right before the instruction that needs it
+        let insert_pos = order.iter().position(|id| *id == *instruction).unwrap();
+        order.insert(insert_pos, copied_value.node());
     }
 
     RegisterAllocationResult {
@@ -79,6 +119,13 @@ fn is_register_type<I: ISA>(ty: &OutputType<I>) -> bool {
         OutputType::Native(_) => true,
 
         _ => false,
+    }
+}
+
+fn is_input_overwritten_by_output<I: ISA>(opcode: &Opcode<I>, input: usize) -> Option<usize> {
+    match opcode {
+        Opcode::Native(opcode) => opcode.is_input_overwritten_by_output(input),
+        _ => None,
     }
 }
 

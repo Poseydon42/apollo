@@ -19,13 +19,15 @@ pub fn codegen_function<I: ISA>(function: &ir::Function, isa: I, debug_dump: boo
         dump_graph(&dag);
     }
 
-    let mut selection_queue = create_selection_queue(&dag);
-    while !selection_queue.is_empty() {
-        let node_id = selection_queue.pop().unwrap();
-        if dag.get(node_id).is_native() {
+    // NOTE: we should *always* maintain the invariant that a node is selected before any
+    //       of its inputs are selected, so that the uses have an easier time integrating some
+    //       of their inputs into themselves during instruction selection.
+    let selection_queue = create_selection_queue(&dag);
+    for node_id in selection_queue.iter().rev() {
+        if dag.get(*node_id).is_native() {
             continue;
         }
-        isa.select_instruction(&mut dag, node_id);
+        isa.select_instruction(&mut dag, *node_id);
     }
 
     if debug_dump {
@@ -93,28 +95,7 @@ pub fn codegen_function<I: ISA>(function: &ir::Function, isa: I, debug_dump: boo
 }
 
 fn create_selection_queue<I: ISA>(dag: &DAG<I>) -> Vec<NodeId> {
-    let mut queue = Vec::new();
-    let mut visited = HashSet::new();
-    let mut stack = vec![dag.root().expect("DAG must contain a root before instruction selection")];
-
-    while let Some(node_id) = stack.pop() {
-        if visited.contains(&node_id) {
-            continue;
-        }
-        visited.insert(node_id);
-        if does_node_need_selection(dag, node_id) {
-            queue.push(node_id);
-        }
-
-        for input in dag.get(node_id).inputs() {
-            if !visited.contains(&input.node()) {
-                stack.push(input.node());
-            }
-        }
-    }
-
-    queue.reverse();
-    queue
+    schedule(dag).iter().filter(|node| does_node_need_selection(dag, **node)).cloned().collect()
 }
 
 fn schedule<I: ISA>(dag: &DAG<I>) -> Vec<NodeId> {

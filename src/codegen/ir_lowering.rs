@@ -94,9 +94,9 @@ impl <'a, I: ISA> IRLowering<'a, I> {
         let offset = self.next_stack_offset;
 
         let frame_base = self.get_register(self.isa.get_stack_frame_base_register(), self.isa.get_pointer_type());
-        let offset = self.get_constant(ir::Constant::int(offset as i32));
+        let offset = self.get_constant(ir::Constant::int(-(offset as i32)));
         let addr = self.dag.add_generic_node(
-            GenericOpcode::Sub,
+            GenericOpcode::Add,
             vec![
                 frame_base,
                 offset,

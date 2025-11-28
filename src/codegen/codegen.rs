@@ -35,13 +35,6 @@ pub fn codegen_function<I: ISA>(function: &ir::Function, isa: I, debug_dump: boo
         dump_graph(&dag);
     }
 
-    for node in dag.nodes() {
-        println!("\t{} has {} uses", node, node.all_uses().count());
-        for (use_node, _) in node.all_uses().filter(|(node, _)| !dag.get(*node).is_dead()) {
-            println!("\t\tused by {}", dag.get(*use_node));
-        }
-    }
-
     let mut schedule = schedule(&dag);
     if debug_dump {
         println!("Scheduled instructions:");

@@ -91,25 +91,29 @@ impl isa::ISA for ISA {
             }
 
             Opcode::MOV_LOAD => {
-                let addr = register_allocation.value_map
-                    .get(&instruction.get_input(1))
-                    .expect("Address register for MOV_LOAD should have been allocated");
                 let output = register_allocation.value_map
                     .get(&instruction.get_output(1))
                     .expect("Output register for MOV_LOAD should have been allocated");
                 let ty = instruction.get_output_type(1).get_native();
+
+                let addr = self.create_operand_for_address(dag, instruction.inputs().skip(1).cloned().collect(), register_allocation);
+
                 Instruction::two_args(
                     Opcode::MOV_LOAD,
                     Operand::Register(*output),
-                    Operand::MemReg(*addr),
+                    addr,
                     *ty,
                 )
             }
 
             Opcode::MOV_STORE => {
-                let addr = register_allocation.value_map
-                    .get(&instruction.get_input(1))
-                    .expect("Address register for MOV_STORE should have been allocated");
+                // First operand is control token, last operand is value to store
+                let address_operands = instruction.inputs()
+                    .skip(1)
+                    .take(instruction.inputs().count() - 2)
+                    .cloned()
+                    .collect();
+                let addr = self.create_operand_for_address(dag, address_operands, register_allocation);
 
                 let value_node = dag.get(instruction.get_input(2).node());
                 let value = if value_node.opcode().is_constant() {
@@ -123,7 +127,7 @@ impl isa::ISA for ISA {
                 };
                 Instruction::two_args(
                     Opcode::MOV_STORE,
-                    Operand::MemReg(*addr),
+                    addr,
                     value,
                     dag.get_value_type(instruction.get_input(2)).get_native().clone()
                 )
@@ -226,12 +230,15 @@ impl ISA {
         let ctrl = load.get_input(0);
         let location = load.get_input(1);
         let ty = load.get_output_type(1).get_native();
+
+        let inputs = match self.match_memory_address(dag, location) {
+            MemoryAddressMatch::Direct { value } => vec![ ctrl, value ],
+            MemoryAddressMatch::BasePlusOffset { base, offset } => vec![ ctrl, base, offset ],
+        };
+
         let load = dag.add_native_node(
             Opcode::MOV_LOAD,
-            vec![
-                ctrl,
-                location
-            ],
+            inputs,
             vec![
                 OutputType::Control,
                 OutputType::Native(ty.clone())
@@ -245,13 +252,15 @@ impl ISA {
         let ctrl = store.get_input(0);
         let location = store.get_input(1);
         let value = store.get_input(2);
+
+        let inputs = match self.match_memory_address(dag, location) {
+            MemoryAddressMatch::Direct { value: address } => vec![ ctrl, address, value ],
+            MemoryAddressMatch::BasePlusOffset { base, offset } => vec![ ctrl, base, offset, value ],
+        };
+
         let store = dag.add_native_node(
             Opcode::MOV_STORE,
-            vec![
-                ctrl,
-                location,
-                value
-            ],
+            inputs,
             vec![
                 OutputType::Control
             ]
@@ -269,6 +278,65 @@ impl ISA {
 
         dag.replace_node(instruction, ret);
     }
+
+    fn match_memory_address(&self, dag: &DAG<Self>, address: Value) -> MemoryAddressMatch {
+        let address_node = dag.get(address.node());
+        if !address_node.opcode().is_generic() {
+            return MemoryAddressMatch::Direct { value: address };
+        }
+
+        let opcode = address_node.opcode().get_generic();
+        match opcode {
+            GenericOpcode::Add => {
+                let base = address_node.get_input(0);
+                let offset = address_node.get_input(1);
+                let offset_opcode = dag.get(offset.node()).opcode();
+                if !offset_opcode.is_constant() {
+                    // TODO: offsets can be registers too, the thing we're missing towards handling this
+                    //       is encoding memory operands with [reg + reg] format. This will become necessary
+                    //       when we implement array access.
+                    return MemoryAddressMatch::Direct { value: address }
+                }
+                MemoryAddressMatch::BasePlusOffset {
+                    base,
+                    offset,
+                }
+            }
+
+            _ => MemoryAddressMatch::Direct { value: address },
+        }
+    }
+
+    fn create_operand_for_address(&self, dag: &DAG<Self>, address_inputs: Vec<Value>, register_allocation: &RegisterAllocationResult<Self>) -> Operand {
+        if address_inputs.is_empty() {
+            panic!("Memory addressing instructions must have at least one input that produces the address");
+        }
+        let base = register_allocation.value_map
+            .get(&address_inputs[0])
+            .expect("Address register for MOV_LOAD should have been allocated");
+        match address_inputs.len() {
+            1 => Operand::MemReg(*base),
+            2 => {
+                let offset = address_inputs[1];
+                let offset = dag.get(offset.node());
+                if !offset.opcode().is_constant() {
+                    panic!("Offset for MOV_LOAD with 3 inputs must be a constant (trying to encode 'mov reg, [reg + const]')");
+                }
+
+                let offset = offset.opcode().get_constant().bits_as_u64() as i32;
+                Operand::MemBaseOffset(*base, offset)
+            }
+            _ => panic!("Memory addressing instructions may only have 1 or 2 inputs that produce the address"),
+        }
+    }
+}
+
+enum MemoryAddressMatch {
+    /// The address is stored in the provided value, and we can't optimize it further
+    Direct { value: Value },
+
+    /// The address is computed as base +/- offset
+    BasePlusOffset { base: Value, offset: Value },
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -283,9 +351,11 @@ pub enum Opcode {
     MOV,
 
     /// mov <vreg>, [<const/reg/vreg>]; (ctrl, addr) -> (ctrl, value)
+    /// mov <vreg>, [<reg/vreg> + <const>]; (ctrl, base, offset) -> (ctrl, value)
     MOV_LOAD,
 
     /// mov [<const/reg/vreg>], <vreg>; (ctrl, addr, value) -> (ctrl)
+    /// mov [<reg/vreg> + <const>], <vreg>; (ctrl, base, offset, value) -> (ctrl)
     MOV_STORE,
 
     /// add <vreg>, <const/reg/vreg>; (lhs, rhs) -> (value)
@@ -358,7 +428,8 @@ impl Display for Opcode {
 pub enum Operand {
     Immediate(u64),
     Register(Register),
-    MemReg(Register), // [reg]
+    MemReg(Register),
+    MemBaseOffset(Register, i32),
 }
 
 impl Operand {
@@ -367,6 +438,13 @@ impl Operand {
             Operand::Register(reg) => reg.to_string(ty),
             Operand::Immediate(value) => ty.print_unsigned_in_hex(*value),
             Operand::MemReg(reg) => format!("[{}]", reg.to_string(Type::QWord)),
+            Operand::MemBaseOffset(base, offset) => {
+                if *offset >= 0 {
+                    format!("[{} + {}]", base.to_string(Type::QWord), Type::DWord.print_unsigned_in_hex(*offset as u64))
+                } else {
+                    format!("[{} - {}]", base.to_string(Type::QWord), Type::DWord.print_unsigned_in_hex((-*offset) as u64))
+                }
+            }
         }
     }
 }

@@ -115,13 +115,15 @@ impl isa::ISA for ISA {
                     .collect();
                 let addr = self.create_operand_for_address(dag, address_operands, register_allocation);
 
-                let value_node = dag.get(instruction.get_input(2).node());
+                let value_input_index = instruction.inputs().count() - 1;
+                let value = instruction.get_input(value_input_index);
+                let value_node = dag.get(value.node());
                 let value = if value_node.opcode().is_constant() {
                     Operand::Immediate(value_node.opcode().get_constant().bits_as_u64())
                 } else {
                     Operand::Register(
                         *register_allocation.value_map
-                        .get(&instruction.get_input(2))
+                        .get(&value)
                         .expect("Non-immediate value of MOV_STORE should have been allocated a register")
                     )
                 };

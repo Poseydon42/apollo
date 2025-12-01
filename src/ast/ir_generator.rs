@@ -42,7 +42,7 @@ impl Visitor<'_, Option<ir::Value>> for IRGenerator {
                 let ret_instruction = ir::Instruction::Return(val);
                 self.get_bb_mut().append_instruction(ret_instruction);
             }
-            None => todo!("Handle void functions properly")
+            None => {}
         }
 
         let function = self.function.take().unwrap();

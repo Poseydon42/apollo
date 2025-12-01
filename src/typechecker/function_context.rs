@@ -4,6 +4,7 @@ use std::collections::HashMap;
 #[derive(Debug)]
 pub struct FunctionContext {
     return_type: ResolvedType,
+    pub explicit_return_guaranteed: bool,
     variables: HashMap<String, ResolvedType>,
 }
 
@@ -11,6 +12,7 @@ impl FunctionContext {
     pub fn new(return_type: ResolvedType) -> Self {
         Self {
             return_type,
+            explicit_return_guaranteed: false,
             variables: HashMap::new(),
         }
     }

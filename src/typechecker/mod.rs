@@ -1,3 +1,4 @@
+mod diagnostics;
 mod function_context;
 mod type_checker;
 mod type_resolver;

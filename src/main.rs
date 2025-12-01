@@ -9,7 +9,7 @@ use std::rc::Rc;
 fn main() -> Result<(), i32> {
     let src = Rc::new(
         r"fn main() -> i32 {\
-            42 \
+            return 42;
         }".to_owned());
 
     let mut lexer = Lexer::new(src);
@@ -30,10 +30,12 @@ fn main() -> Result<(), i32> {
     printer.visit_module(&module);
 
     println!("===== TYPECHECK =====");
-    let type_ok = TypeChecker::new().check(&mut module);
+    let type_ok = TypeChecker::new(&mut reporter).check(&mut module);
     println!("Type checking {}", if type_ok { "succeeded" } else { "failed" });
     if type_ok {
         printer.visit_module(&module);
+    } else {
+        return Ok(());
     }
 
     println!("===== IR =====");

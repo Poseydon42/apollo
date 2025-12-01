@@ -42,7 +42,7 @@ pub type Decl = Node<DeclKind>;
 pub struct FunctionDecl {
     pub name: Span,
     pub return_ty: Type,
-    pub body: Vec<Stmt>,
+    pub body: Expr,
 }
 
 #[derive(Debug)]
@@ -50,6 +50,21 @@ pub struct VariableDecl {
     pub name: Span,
     pub ty: Type,
     pub init: Expr,
+}
+
+#[derive(Debug)]
+pub struct Block {
+    pub ignored_exprs: Vec<Expr>,
+    pub last_expr: Option<Box<Expr>>,
+}
+
+impl Block {
+    pub fn new(ignored_exprs: Vec<Expr>, last_expr: Option<Expr>) -> Self {
+        Self {
+            ignored_exprs,
+            last_expr: last_expr.map(Box::new),
+        }
+    }
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -68,12 +83,12 @@ impl Display for BinaryOp {
 }
 
 #[derive(Debug)]
-pub struct IntegerLiteralExpr {
+pub struct IntegerLiteral {
     pub raw_value: Span,
     pub ty: Option<ResolvedType>,
 }
 
-impl IntegerLiteralExpr {
+impl IntegerLiteral {
     pub fn new(raw_value: Span) -> Self {
         Self {
             raw_value,
@@ -83,12 +98,12 @@ impl IntegerLiteralExpr {
 }
 
 #[derive(Debug)]
-pub struct VariableReferenceExpr {
+pub struct VariableReference {
     pub name: Span,
     pub ty: Option<ResolvedType>,
 }
 
-impl VariableReferenceExpr {
+impl VariableReference {
     pub fn new(name: Span) -> Self {
         Self {
             name,
@@ -115,18 +130,31 @@ impl BinaryExpr {
 }
 
 #[derive(Debug)]
+pub struct Return {
+    pub value: Box<Expr>,
+}
+
+impl Return {
+    pub fn new(value: Expr) -> Self {
+        Self {
+            value: Box::new(value),
+        }
+    }
+}
+
+#[derive(Debug)]
 pub enum ExprKind {
-    IntegerLiteral(IntegerLiteralExpr),
-    VariableReference(VariableReferenceExpr),
+    Block(Block),
+
+    Decl(Box<Decl>),
+
+    IntegerLiteral(IntegerLiteral),
+    VariableReference(VariableReference),
+
     Binary(BinaryExpr),
+
+    Return(Return),
 }
 
 pub type Expr = Node<ExprKind>;
 
-#[derive(Debug)]
-pub enum StmtKind {
-    Decl(Decl),
-    Return(Expr),
-}
-
-pub type Stmt = Node<StmtKind>;

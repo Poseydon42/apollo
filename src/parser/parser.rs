@@ -24,8 +24,9 @@ impl<'a, R: diagnostic::Reporter> Parser<'a, R> {
     pub fn parse(&mut self) -> Module {
         let mut decls = vec![];
 
-        while self.match_decl() {
-            if let Some(decl) = self.parse_decl() {
+        // NOTE: for now, the only top-level declarations are functions
+        while self.match_func_decl() {
+            if let Some(decl) = self.parse_func_decl() {
                 decls.push(decl)
             }
         }
@@ -49,6 +50,15 @@ impl<'a, R: diagnostic::Reporter> Parser<'a, R> {
         } else {
             self.reporter.report(create_diagnostic!(UnexpectedEOF, self.eof_location(), kind));
             None
+        }
+    }
+
+    fn try_eat(&mut self, kind: LexemKind) -> Option<&Lexem> {
+        match self.peek() {
+            Some(lexem) if lexem.kind == kind => {
+                self.eat(kind)
+            }
+            _ => None,
         }
     }
 
@@ -94,22 +104,35 @@ impl<'a, R: diagnostic::Reporter> Parser<'a, R> {
     }
 
     fn match_expr(&self) -> bool {
-        self.match_integer_literal_expr() |
-        self.match_identifier_expr()
+        self.match_block() |
+        self.match_decl() |
+        self.match_integer_literal() |
+        self.match_identifier() |
+        self.match_return()
     }
 
-    fn match_integer_literal_expr(&self) -> bool {
+    fn match_block(&self) -> bool {
+        self.match_lexem(LexemKind::LeftBrace)
+    }
+
+    fn match_integer_literal(&self) -> bool {
         self.match_lexem(LexemKind::IntegerLiteral)
     }
 
-    fn match_identifier_expr(&self) -> bool {
+    fn match_identifier(&self) -> bool {
         self.match_lexem(LexemKind::Identifier)
+    }
+
+    fn match_return(&self) -> bool {
+        self.match_lexem(LexemKind::Return)
     }
 
     // ----- PARSERS -----
     fn parse_decl(&mut self) -> Option<Decl> {
         if self.match_func_decl() {
             self.parse_func_decl()
+        } else if self.match_variable_decl() {
+            self.parse_variable_decl()
         } else {
             None
         }
@@ -126,26 +149,14 @@ impl<'a, R: diagnostic::Reporter> Parser<'a, R> {
         self.eat(LexemKind::Arrow)?;
         let return_ty = self.parse_ty()?;
 
-        self.eat(LexemKind::LeftBrace)?;
-
-        let mut body = vec![];
-        while let Some(lexem) = self.peek() {
-            if lexem.kind == LexemKind::RightBrace {
-                break;
-            }
-
-            let stmt = self.parse_stmt()?;
-            body.push(stmt);
-        }
-
-        let end = &self.eat(LexemKind::RightBrace)?.span;
+        let body = self.parse_block()?;
+        let span = start.merge_with(&body.span);
 
         let func = FunctionDecl {
             name,
             return_ty,
             body
         };
-        let span = start.merge_with(end);
         Some(Decl::new(DeclKind::Function(func), span))
     }
 
@@ -159,15 +170,13 @@ impl<'a, R: diagnostic::Reporter> Parser<'a, R> {
 
         self.eat(LexemKind::Equals)?;
         let init = self.parse_expr()?;
-
-        let end = &self.eat(LexemKind::Semicolon)?.span;
-
+        
+        let span = start.merge_with(&init.span);
         let variable = VariableDecl {
             name,
             ty,
             init
         };
-        let span = start.merge_with(end);
         Some(Decl::new(DeclKind::Variable(variable), span))
     }
 
@@ -185,6 +194,75 @@ impl<'a, R: diagnostic::Reporter> Parser<'a, R> {
     }
 
     fn parse_expr(&mut self) -> Option<Expr> {
+        if self.match_block() {
+            self.parse_block()
+        } else if self.match_decl() {
+            let decl = self.parse_decl()?;
+            let span = decl.span.clone();
+            Some(Expr::new(ExprKind::Decl(Box::new(decl)), span))
+        } else if self.match_return() {
+            self.parse_return()
+        } else {
+            self.parse_general_expr()
+        }
+    }
+
+    fn parse_block(&mut self) -> Option<Expr> {
+        let start = self.eat(LexemKind::LeftBrace)?.span.clone();
+
+        let mut stmts = vec![];
+        let mut last_expr = None;
+        while self.match_expr() {
+            let expr = self.parse_expr()?;
+            if last_expr.is_some() {
+                println!("{:?}", last_expr);
+                self.reporter.report(create_diagnostic!(UnexpectedExprAfterLastExprInBlock, self.peek().unwrap().span.clone()));
+            }
+            match self.try_eat(LexemKind::Semicolon) {
+                Some(..) => {
+                    stmts.push(expr);
+                }
+                None => {
+                    last_expr = Some(expr);
+                }
+            }
+        }
+
+        let end = self.eat(LexemKind::RightBrace)?;
+        let span = start.merge_with(&end.span);
+
+        Some(Expr::new(ExprKind::Block(Block::new(stmts, last_expr)), span))
+    }
+
+    fn parse_integer_literal(&mut self) -> Option<Expr> {
+        let literal = self.eat(LexemKind::IntegerLiteral)?;
+        Some(Expr::new(ExprKind::IntegerLiteral(IntegerLiteral::new(literal.span.clone())), literal.span.clone()))
+    }
+
+    fn parse_identifier(&mut self) -> Option<Expr> {
+        let identifier = self.eat(LexemKind::Identifier)?;
+        Some(Expr::new(ExprKind::VariableReference(VariableReference::new(identifier.span.clone())), identifier.span.clone()))
+    }
+
+    fn parse_return(&mut self) -> Option<Expr> {
+        let start = self.eat(LexemKind::Return)?.span.clone();
+        let value = self.parse_expr()?;
+
+        let span = start.merge_with(&value.span);
+        Some(Expr::new(ExprKind::Return(Return::new(value)), span))
+    }
+
+    fn parse_primary_expr(&mut self) -> Option<Expr> {
+        if self.match_integer_literal() {
+            self.parse_integer_literal()
+        } else if self.match_identifier() {
+            self.parse_identifier()
+        } else {
+            None
+        }
+    }
+
+    fn parse_general_expr(&mut self) -> Option<Expr> {
         let mut lhs = self.parse_primary_expr()?;
         while let Some(op) = self.match_binary_op() {
             self.advance();
@@ -193,46 +271,5 @@ impl<'a, R: diagnostic::Reporter> Parser<'a, R> {
             lhs = Expr::new(ExprKind::Binary(BinaryExpr::new(lhs, op, rhs)), span);
         }
         Some(lhs)
-    }
-
-    fn parse_integer_literal_expr(&mut self) -> Option<Expr> {
-        let literal = self.eat(LexemKind::IntegerLiteral)?;
-        Some(Expr::new(ExprKind::IntegerLiteral(IntegerLiteralExpr::new(literal.span.clone())), literal.span.clone()))
-    }
-
-    fn parse_identifier_expr(&mut self) -> Option<Expr> {
-        let identifier = self.eat(LexemKind::Identifier)?;
-        Some(Expr::new(ExprKind::VariableReference(VariableReferenceExpr::new(identifier.span.clone())), identifier.span.clone()))
-    }
-
-    fn parse_primary_expr(&mut self) -> Option<Expr> {
-        if self.match_integer_literal_expr() {
-            self.parse_integer_literal_expr()
-        } else if self.match_identifier_expr() {
-            self.parse_identifier_expr()
-        } else {
-            None
-        }
-    }
-
-    fn parse_stmt(&mut self) -> Option<Stmt> {
-        if self.match_lexem(LexemKind::Return) {
-            self.parse_return_stmt()
-        } else if self.match_variable_decl() {
-            let decl = self.parse_variable_decl()?;
-            let span = decl.span.clone();
-            Some(Stmt::new(StmtKind::Decl(decl), span))
-        } else {
-            None
-        }
-    }
-
-    fn parse_return_stmt(&mut self) -> Option<Stmt> {
-        let start = self.eat(LexemKind::Return)?.span.clone();
-        let value = self.parse_expr()?;
-        let end = self.eat(LexemKind::Semicolon)?;
-
-        let span = start.merge_with(&end.span);
-        Some(Stmt::new(StmtKind::Return(value), span))
     }
 }

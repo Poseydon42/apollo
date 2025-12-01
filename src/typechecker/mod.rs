@@ -1,4 +1,3 @@
-mod expr_resolver;
 mod function_context;
 mod type_checker;
 mod type_resolver;

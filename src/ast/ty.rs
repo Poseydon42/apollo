@@ -2,12 +2,14 @@ use std::fmt::*;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ResolvedType {
+    Empty,
     BuiltIn(BuiltInType),
 }
 
 impl ResolvedType {
     pub fn to_string(&self) -> String {
         match self {
+            ResolvedType::Empty => "()".to_string(),
             ResolvedType::BuiltIn(ty) => ty.to_string(),
         }
     }

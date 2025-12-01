@@ -36,9 +36,14 @@ impl Visitor<'_, Option<ir::Value>> for IRGenerator {
         self.function = Some(function);
         self.variables.clear();
 
-        func_decl.body.iter().for_each(|stmt| { 
-            self.visit_stmt(stmt);
-        });
+        let return_value = self.visit_expr(&func_decl.body);
+        match return_value {
+            Some(val) => {
+                let ret_instruction = ir::Instruction::Return(val);
+                self.get_bb_mut().append_instruction(ret_instruction);
+            }
+            None => todo!("Handle void functions properly")
+        }
 
         let function = self.function.take().unwrap();
         self.module.add_function(function);
@@ -52,17 +57,30 @@ impl Visitor<'_, Option<ir::Value>> for IRGenerator {
 
         let ty = variable.ty.resolved.as_ref().expect("Variable declaration must have a resolved AST type during IR generation");
         let allocate = ir::Instruction::Allocate(lower_type(ty));
-        let ptr =self.get_bb_mut().append_named_instruction(allocate, variable.name.text().to_owned()).1.unwrap();
+        let ptr = self.get_bb_mut().append_named_instruction(allocate, variable.name.text().to_owned()).1.unwrap();
 
         let init = self.visit_expr(&variable.init).expect("Variable initialization expression must produce a node");
-        let store = ir::Instruction::Store { value: init, location: ptr.clone() };
+        let store = ir::Instruction::Store { value: init.clone(), location: ptr.clone() };
         self.get_bb_mut().append_instruction(store);
         self.variables.insert(variable.name.text().to_owned(), ptr.clone());
-        
-        Some(ptr)
+
+        // NOTE: variable declarations produce a value corresponding to their initialized value
+        Some(init)
     }
 
-    fn visit_integer_literal_expr(&mut self, expr: &'_ ast::IntegerLiteralExpr, _node: &'_ ast::Expr) -> Option<ir::Value> {
+    fn visit_block(&mut self, block: &'_ Block, _node: &'_ Expr) -> Option<ir::Value> {
+        for expr in &block.ignored_exprs {
+            self.visit_expr(expr);
+        }
+
+        if let Some(last_expr) = &block.last_expr {
+            self.visit_expr(&*last_expr)
+        } else {
+            None
+        }
+    }
+
+    fn visit_integer_literal(&mut self, expr: &'_ ast::IntegerLiteral, _node: &'_ ast::Expr) -> Option<ir::Value> {
         // FIXME: this is so, so bad. We should use some sort of binary representation of an
         //        "abstract typed value" instead of relying on Rust's integer parsing functionality
         let value: i32 = expr.raw_value.text().parse().expect("Value of an integer literal must be a valid 32 bit signed integer");
@@ -70,7 +88,7 @@ impl Visitor<'_, Option<ir::Value>> for IRGenerator {
         Some(value)
     }
 
-    fn visit_variable_reference_expr(&mut self, expr: &'_ VariableReferenceExpr, _node: &'_ Expr) -> Option<ir::Value> {
+    fn visit_variable_reference(&mut self, expr: &'_ VariableReference, _node: &'_ Expr) -> Option<ir::Value> {
         let ptr = self.variables.get(expr.name.text())
             .expect("Variable reference must refer to a previously declared variable");
         let load = ir::Instruction::Load { 
@@ -90,18 +108,17 @@ impl Visitor<'_, Option<ir::Value>> for IRGenerator {
         self.get_bb_mut().append_instruction(instruction).1
     }
 
-    fn visit_return_stmt(&mut self, value: &'_ ast::Expr, _stmt: &'_ ast::Stmt) -> Option<ir::Value> {
-        let value = self.visit_expr(value).expect("Visited expression must produce a node");
-        
-        let ret = ir::Instruction::Return(value);
-        self.get_bb_mut().append_instruction(ret);
-
+    fn visit_return(&mut self, expr: &Return, _node: &Expr) -> Option<ir::Value> {
+        let value = self.visit_expr(&*expr.value).expect("Return expression must produce a node");
+        let instruction = ir::Instruction::Return(value);
+        self.get_bb_mut().append_instruction(instruction);
         None
     }
 }
 
 fn lower_type(ty: &ResolvedType) -> ir::Ty {
     match ty {
+        ResolvedType::Empty => unreachable!("Cannot lower () type to IR type"),
         ResolvedType::BuiltIn(builtin_ty) => lower_builtin_type(builtin_ty),
     }
 }

@@ -41,7 +41,7 @@ macro_rules! increase_indent_and {
 impl<'ast, 'writer, W: Write> Visitor<'ast> for ASTPrinter<'writer, W> {
     fn visit_func_decl(&mut self, func: &'ast FunctionDecl, node: &'ast Decl) {
         writeln_with_ident!(self, "FuncDecl @ ({},{}): {} -> {}", node.span.line(), node.span.column(), func.name.text(), self.get_type_string(&func.return_ty));
-        increase_indent_and!(self, func.body.iter().for_each(|stmt| self.visit_stmt(stmt)));
+        increase_indent_and!(self, self.visit_expr(&func.body));
     }
 
     fn visit_variable_decl(&mut self, variable: &'ast VariableDecl, node: &'ast Decl) {
@@ -49,12 +49,12 @@ impl<'ast, 'writer, W: Write> Visitor<'ast> for ASTPrinter<'writer, W> {
         increase_indent_and!(self, self.visit_expr(&variable.init));
     }
 
-    fn visit_integer_literal_expr(&mut self, expr: &'ast IntegerLiteralExpr, node: &'ast Expr) {
-        writeln_with_ident!(self, "IntegerLiteralExpr @ ({},{}): {}", node.span.line(), node.span.column(), expr.raw_value.text());
+    fn visit_integer_literal(&mut self, expr: &'ast IntegerLiteral, node: &'ast Expr) {
+        writeln_with_ident!(self, "IntegerLiteral @ ({},{}): {}", node.span.line(), node.span.column(), expr.raw_value.text());
     }
 
-    fn visit_variable_reference_expr(&mut self, expr: &'ast VariableReferenceExpr, node: &'ast Expr) {
-        writeln_with_ident!(self, "VariableReferenceExpr @ ({},{}): {}", node.span.line(), node.span.column(), expr.name.text());
+    fn visit_variable_reference(&mut self, expr: &'ast VariableReference, node: &'ast Expr) {
+        writeln_with_ident!(self, "VariableReference @ ({},{}): {}", node.span.line(), node.span.column(), expr.name.text());
     }
 
     fn visit_binary_expr(&mut self, expr: &'ast BinaryExpr, node: &'ast Expr) -> () {
@@ -62,8 +62,8 @@ impl<'ast, 'writer, W: Write> Visitor<'ast> for ASTPrinter<'writer, W> {
         increase_indent_and!(self, self.visit_expr(&*expr.lhs), self.visit_expr(&*expr.rhs));
     }
 
-    fn visit_return_stmt(&mut self, value: &'ast Expr, stmt: &'ast Stmt) {
-        writeln_with_ident!(self, "ReturnStmt @ ({},{})", stmt.span.line(), stmt.span.column());
-        increase_indent_and!(self, self.visit_expr(value));
+    fn visit_return(&mut self, expr: &'ast Return, node: &'ast Expr) -> () {
+        writeln_with_ident!(self, "Return @ ({},{}):", node.span.line(), node.span.column());
+        increase_indent_and!(self, self.visit_expr(&*expr.value));
     }
 }

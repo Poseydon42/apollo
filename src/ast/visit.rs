@@ -17,9 +17,7 @@ pub trait Visitor<'ast, ReturnType = ()> : Sized where
     }
 
     fn visit_func_decl(&mut self, func: &'ast FunctionDecl, _node: &'ast Decl) -> ReturnType {
-        for stmt in &func.body {
-            self.visit_stmt(stmt);
-        }
+        self.visit_expr(&func.body);
         Default::default()
     }
 
@@ -30,17 +28,30 @@ pub trait Visitor<'ast, ReturnType = ()> : Sized where
 
     fn visit_expr(&mut self, expr: &'ast Expr) -> ReturnType {
         match &expr.data {
-            ExprKind::IntegerLiteral(literal_expr) => self.visit_integer_literal_expr(literal_expr, expr),
-            ExprKind::VariableReference(variable_reference_expr) => self.visit_variable_reference_expr(variable_reference_expr, expr),
-            ExprKind::Binary(binary_expr) => self.visit_binary_expr(binary_expr, expr)
+            ExprKind::Block(block_expr) => self.visit_block(block_expr, expr),
+            ExprKind::Decl(decl) => self.visit_decl(&*decl),
+            ExprKind::IntegerLiteral(literal_expr) => self.visit_integer_literal(literal_expr, expr),
+            ExprKind::VariableReference(variable_reference_expr) => self.visit_variable_reference(variable_reference_expr, expr),
+            ExprKind::Binary(binary_expr) => self.visit_binary_expr(binary_expr, expr),
+            ExprKind::Return(return_expr) => self.visit_return(return_expr, expr),
         }
     }
 
-    fn visit_integer_literal_expr(&mut self, _expr: &'ast IntegerLiteralExpr, _node: &'ast Expr) -> ReturnType {
+    fn visit_block(&mut self, block_expr: &'ast Block, _node: &'ast Expr) -> ReturnType {
+        for stmt in &block_expr.ignored_exprs {
+            self.visit_expr(stmt);
+        }
+        if let Some(last_expr) = &block_expr.last_expr {
+            self.visit_expr(&*last_expr);
+        }
         Default::default()
     }
 
-    fn visit_variable_reference_expr(&mut self, _expr: &'ast VariableReferenceExpr, _node: &'ast Expr) -> ReturnType {
+    fn visit_integer_literal(&mut self, _expr: &'ast IntegerLiteral, _node: &'ast Expr) -> ReturnType {
+        Default::default()
+    }
+
+    fn visit_variable_reference(&mut self, _expr: &'ast VariableReference, _node: &'ast Expr) -> ReturnType {
         Default::default()
     }
 
@@ -50,20 +61,8 @@ pub trait Visitor<'ast, ReturnType = ()> : Sized where
         Default::default()
     }
 
-    fn visit_stmt(&mut self, stmt: &'ast Stmt) -> ReturnType {
-        match &stmt.data {
-            StmtKind::Decl(decl) => self.visit_decl_stmt(decl),
-            StmtKind::Return(value) => self.visit_return_stmt(value, stmt)
-        }
-    }
-
-    fn visit_decl_stmt(&mut self, decl: &'ast Decl) -> ReturnType {
-        self.visit_decl(decl);
-        Default::default()
-    }
-
-    fn visit_return_stmt(&mut self, value: &'ast Expr, _stmt: &'ast Stmt) -> ReturnType {
-        self.visit_expr(value);
+    fn visit_return(&mut self, expr: &'ast Return, _node: &'ast Expr) -> ReturnType {
+        self.visit_expr(&*expr.value);
         Default::default()
     }
 }
@@ -85,9 +84,7 @@ pub trait MutVisitor<'ast, ReturnType = ()> : Sized
     }
     
     fn visit_func_decl(&mut self, func: &'ast mut FunctionDecl) -> ReturnType {
-        for stmt in &mut func.body {
-            self.visit_stmt(stmt);
-        }
+        self.visit_expr(&mut func.body);
         Default::default()
     }
 
@@ -98,17 +95,30 @@ pub trait MutVisitor<'ast, ReturnType = ()> : Sized
 
     fn visit_expr(&mut self, node: &'ast mut Expr) -> ReturnType {
         match &mut node.data {
-            ExprKind::IntegerLiteral(expr) => self.visit_integer_literal_expr(expr),
-            ExprKind::VariableReference(expr) => self.visit_variable_reference_expr(expr),
+            ExprKind::Block(block_expr) => self.visit_block(block_expr),
+            ExprKind::Decl(decl) => self.visit_decl(&mut **decl),
+            ExprKind::IntegerLiteral(expr) => self.visit_integer_literal(expr),
+            ExprKind::VariableReference(expr) => self.visit_variable_reference(expr),
             ExprKind::Binary(expr) => self.visit_binary_expr(expr),
+            ExprKind::Return(expr) => self.visit_return(expr),
         }
     }
 
-    fn visit_integer_literal_expr(&mut self, _expr: &'ast mut IntegerLiteralExpr) -> ReturnType {
+    fn visit_block(&mut self, block_expr: &'ast mut Block) -> ReturnType {
+        for stmt in &mut block_expr.ignored_exprs {
+            self.visit_expr(stmt);
+        }
+        if let Some(last_expr) = &mut block_expr.last_expr {
+            self.visit_expr(&mut *last_expr);
+        }
         Default::default()
     }
 
-    fn visit_variable_reference_expr(&mut self, _expr: &'ast mut VariableReferenceExpr) -> ReturnType {
+    fn visit_integer_literal(&mut self, _expr: &'ast mut IntegerLiteral) -> ReturnType {
+        Default::default()
+    }
+
+    fn visit_variable_reference(&mut self, _expr: &'ast mut VariableReference) -> ReturnType {
         Default::default()
     }
 
@@ -118,20 +128,8 @@ pub trait MutVisitor<'ast, ReturnType = ()> : Sized
         Default::default()
     }
 
-    fn visit_stmt(&mut self, stmt: &'ast mut Stmt) -> ReturnType {
-        match &mut stmt.data {
-            StmtKind::Decl(decl) => self.visit_decl_stmt(decl),
-            StmtKind::Return(value) => self.visit_return_stmt(value)
-        }
-    }
-
-    fn visit_decl_stmt(&mut self, decl: &'ast mut Decl) -> ReturnType {
-        self.visit_decl(decl);
-        Default::default()
-    }
-
-    fn visit_return_stmt(&mut self, value: &'ast mut Expr) -> ReturnType {
-        self.visit_expr(value);
+    fn visit_return(&mut self, expr: &'ast mut Return) -> ReturnType {
+        self.visit_expr(&mut *expr.value);
         Default::default()
     }
 }

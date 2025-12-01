@@ -9,8 +9,7 @@ use std::rc::Rc;
 fn main() -> Result<(), i32> {
     let src = Rc::new(
         r"fn main() -> i32 {\
-            let x: i32 = 12; \
-            return x + 30; \
+            42 \
         }".to_owned());
 
     let mut lexer = Lexer::new(src);

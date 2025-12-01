@@ -116,8 +116,8 @@ impl<'ast, 'reporter, R: Reporter> MutVisitor<'ast, Option<ResolvedType>> for Ty
     }
 
     fn visit_integer_literal(&mut self, expr: &'ast mut IntegerLiteral) -> Option<ResolvedType> {
-        expr.ty = Some(ResolvedType::BuiltIn(BuiltInType::Int));
-        Some(ResolvedType::BuiltIn(BuiltInType::Int))
+        expr.ty = Some(ResolvedType::Int);
+        Some(ResolvedType::Int)
     }
 
     fn visit_variable_reference(&mut self, expr: &'ast mut VariableReference) -> Option<ResolvedType> {

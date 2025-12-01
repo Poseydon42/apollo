@@ -119,12 +119,6 @@ impl Visitor<'_, Option<ir::Value>> for IRGenerator {
 fn lower_type(ty: &ResolvedType) -> ir::Ty {
     match ty {
         ResolvedType::Empty => unreachable!("Cannot lower () type to IR type"),
-        ResolvedType::BuiltIn(builtin_ty) => lower_builtin_type(builtin_ty),
-    }
-}
-
-fn lower_builtin_type(builtin_ty: &BuiltInType) -> ir::Ty {
-    match builtin_ty {
-        BuiltInType::Int => ir::Ty::Int,
+        ResolvedType::Int => ir::Ty::Int,
     }
 }

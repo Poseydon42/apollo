@@ -273,7 +273,13 @@ impl ISA {
     fn lower_ret(&self, dag: &mut DAG<Self>, instruction: NodeId) {
         let ret = dag.get(instruction);
         let ctrl  = ret.get_input(0);
-        let arg = ret.get_input(1);
+        let mut arg = ret.get_input(1);
+
+        // Constant return values need special handling, as they won't be materialized into a register automatically,
+        // so we need to insert a copy manually
+        if dag.get(arg.node()).opcode().is_constant() {
+            arg = isa::ISA::insert_register_copy(self, dag, arg)
+        }
 
         let ret = dag.add_native_node(Opcode::RET, vec![ctrl, arg], vec![]);
         dag.set_allowed_registers(ret, 1, vec![Register::RAX]);

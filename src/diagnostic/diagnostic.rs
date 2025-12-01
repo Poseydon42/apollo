@@ -56,6 +56,8 @@ macro_rules! declare_diagnostic {
             }
         }
     };
+
+    ($name:ident, $severity:ident, $format:literal) => { declare_diagnostic!($name, $severity, $format, ); }
 }
 
 #[macro_export]
@@ -63,4 +65,6 @@ macro_rules! create_diagnostic {
     ($name:ident, $location:expr, $($arg:expr),*) => {
         $name::new($location, $($arg,)*)
     };
+
+    ($name:ident, $location:expr) => { create_diagnostic!($name, $location, ) }
 }

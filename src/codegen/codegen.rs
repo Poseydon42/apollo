@@ -145,7 +145,10 @@ fn schedule<I: ISA>(dag: &DAG<I>) -> Vec<NodeId> {
             // NOTE: this will not be true for the last node of the DAG control flow (i.e. ret/branch), but we will have processed
             //       it by now anyway as it's the root of the DAG, which is added to the priority queue anyway.
             let has_ctrl = dag.get(input_node).outputs().any(|value| dag.get_value_type(value).is_control());
-            available.push(NodeEntry { node: input_node, has_ctrl });
+            let entry = NodeEntry { node: input_node, has_ctrl };
+            if !available.iter().any(|e| e.node == input_node) {
+                available.push(entry);
+            }
         }
     }
 

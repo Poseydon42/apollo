@@ -88,6 +88,11 @@ impl Visitor<'_, Option<ir::Value>> for IRGenerator {
         Some(value)
     }
 
+    fn visit_boolean_literal(&mut self, expr: &'_ ast::BooleanLiteral, _node: &'_ ast::Expr) -> Option<ir::Value> {
+        let value = ir::Value::constant(ir::Constant::bool(expr.value));
+        Some(value)
+    }
+
     fn visit_variable_reference(&mut self, expr: &'_ VariableReference, _node: &'_ Expr) -> Option<ir::Value> {
         let ptr = self.variables.get(expr.name.text())
             .expect("Variable reference must refer to a previously declared variable");

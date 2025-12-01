@@ -53,6 +53,10 @@ impl<'ast, 'writer, W: Write> Visitor<'ast> for ASTPrinter<'writer, W> {
         writeln_with_ident!(self, "IntegerLiteral @ ({},{}): {}", node.span.line(), node.span.column(), expr.raw_value.text());
     }
 
+    fn visit_boolean_literal(&mut self, expr: &'ast BooleanLiteral, node: &'ast Expr) {
+        writeln_with_ident!(self, "BooleanLiteral @ ({},{}): {}", node.span.line(), node.span.column(), expr.value);
+    }
+
     fn visit_variable_reference(&mut self, expr: &'ast VariableReference, node: &'ast Expr) {
         writeln_with_ident!(self, "VariableReference @ ({},{}): {}", node.span.line(), node.span.column(), expr.name.text());
     }

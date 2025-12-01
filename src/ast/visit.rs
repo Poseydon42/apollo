@@ -31,6 +31,7 @@ pub trait Visitor<'ast, ReturnType = ()> : Sized where
             ExprKind::Block(block_expr) => self.visit_block(block_expr, expr),
             ExprKind::Decl(decl) => self.visit_decl(&*decl),
             ExprKind::IntegerLiteral(literal_expr) => self.visit_integer_literal(literal_expr, expr),
+            ExprKind::BooleanLiteral(boolean_literal_expr) => self.visit_boolean_literal(boolean_literal_expr, expr),
             ExprKind::VariableReference(variable_reference_expr) => self.visit_variable_reference(variable_reference_expr, expr),
             ExprKind::Binary(binary_expr) => self.visit_binary_expr(binary_expr, expr),
             ExprKind::Return(return_expr) => self.visit_return(return_expr, expr),
@@ -48,6 +49,10 @@ pub trait Visitor<'ast, ReturnType = ()> : Sized where
     }
 
     fn visit_integer_literal(&mut self, _expr: &'ast IntegerLiteral, _node: &'ast Expr) -> ReturnType {
+        Default::default()
+    }
+
+    fn visit_boolean_literal(&mut self, _expr: &'ast BooleanLiteral, _node: &'ast Expr) -> ReturnType {
         Default::default()
     }
 
@@ -98,6 +103,7 @@ pub trait MutVisitor<'ast, ReturnType = ()> : Sized
             ExprKind::Block(block_expr) => self.visit_block(block_expr),
             ExprKind::Decl(decl) => self.visit_decl(&mut **decl),
             ExprKind::IntegerLiteral(expr) => self.visit_integer_literal(expr),
+            ExprKind::BooleanLiteral(expr) => self.visit_boolean_literal(expr),
             ExprKind::VariableReference(expr) => self.visit_variable_reference(expr),
             ExprKind::Binary(expr) => self.visit_binary_expr(expr),
             ExprKind::Return(expr) => self.visit_return(expr),
@@ -115,6 +121,10 @@ pub trait MutVisitor<'ast, ReturnType = ()> : Sized
     }
 
     fn visit_integer_literal(&mut self, _expr: &'ast mut IntegerLiteral) -> ReturnType {
+        Default::default()
+    }
+
+    fn visit_boolean_literal(&mut self, _expr: &'ast mut BooleanLiteral) -> ReturnType {
         Default::default()
     }
 

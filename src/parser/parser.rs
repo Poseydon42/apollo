@@ -104,10 +104,11 @@ impl<'a, R: diagnostic::Reporter> Parser<'a, R> {
     }
 
     fn match_expr(&self) -> bool {
-        self.match_block() |
-        self.match_decl() |
-        self.match_integer_literal() |
-        self.match_identifier() |
+        self.match_block() ||
+        self.match_decl() ||
+        self.match_integer_literal() ||
+        self.match_boolean_literal() ||
+        self.match_identifier() ||
         self.match_return()
     }
 
@@ -117,6 +118,10 @@ impl<'a, R: diagnostic::Reporter> Parser<'a, R> {
 
     fn match_integer_literal(&self) -> bool {
         self.match_lexem(LexemKind::IntegerLiteral)
+    }
+
+    fn match_boolean_literal(&self) -> bool {
+        self.match_lexem(LexemKind::True) || self.match_lexem(LexemKind::False)
     }
 
     fn match_identifier(&self) -> bool {
@@ -239,6 +244,19 @@ impl<'a, R: diagnostic::Reporter> Parser<'a, R> {
         Some(Expr::new(ExprKind::IntegerLiteral(IntegerLiteral::new(literal.span.clone())), literal.span.clone()))
     }
 
+    fn parse_boolean_literal(&mut self) -> Option<Expr> {
+        let (span, kind) = {
+            let lexem = self.peek()?;
+            (lexem.span.clone(), lexem.kind)
+        };
+        self.advance();
+
+        assert!(kind == LexemKind::True || kind == LexemKind::False);
+        let value = kind == LexemKind::True;
+
+        Some(Expr::new(ExprKind::BooleanLiteral(BooleanLiteral::new(value)), span))
+    }
+
     fn parse_identifier(&mut self) -> Option<Expr> {
         let identifier = self.eat(LexemKind::Identifier)?;
         Some(Expr::new(ExprKind::VariableReference(VariableReference::new(identifier.span.clone())), identifier.span.clone()))
@@ -255,6 +273,8 @@ impl<'a, R: diagnostic::Reporter> Parser<'a, R> {
     fn parse_primary_expr(&mut self) -> Option<Expr> {
         if self.match_integer_literal() {
             self.parse_integer_literal()
+        } else if self.match_boolean_literal() {
+            self.parse_boolean_literal()
         } else if self.match_identifier() {
             self.parse_identifier()
         } else {

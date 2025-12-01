@@ -7,6 +7,8 @@ pub enum LexemKind {
     Identifier,
 
     IntegerLiteral,
+    True,
+    False,
 
     Fn,
     Let,
@@ -77,6 +79,9 @@ pub(super) fn is_double_char_lexem(first: char, second: char) -> Option<LexemKin
 
 pub(super) fn is_keyword(identifier: &str) -> Option<LexemKind> {
     match identifier {
+        "true" => Some(LexemKind::True),
+        "false" => Some(LexemKind::False),
+        
         "fn" => Some(LexemKind::Fn),
         "let" => Some(LexemKind::Let),
         "return" => Some(LexemKind::Return),
@@ -89,6 +94,8 @@ impl Display for LexemKind {
         match self {
             LexemKind::Identifier => write!(f, "Identifier"),
             LexemKind::IntegerLiteral => write!(f, "IntegerLiteral"),
+            LexemKind::True => write!(f, "True"),
+            LexemKind::False => write!(f, "False"),
             LexemKind::Fn => write!(f, "Fn"),
             LexemKind::Let => write!(f, "Let"),
             LexemKind::Return => write!(f, "Return"),

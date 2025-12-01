@@ -42,7 +42,7 @@ impl<'ast, 'reporter, R: Reporter> MutVisitor<'ast, Option<ResolvedType>> for Ty
     }
 
     fn visit_func_decl(&mut self, func: &'ast mut FunctionDecl) -> Option<ResolvedType> {
-        let Some(return_ty) = resolve_type(func.return_ty.span.text()) else { panic!("Could not resoplve return type of function {}", func.name.text()); };
+        let Some(return_ty) = resolve_type(func.return_ty.span.text()) else { panic!("Could not resolve return type of function {}", func.name.text()); };
         func.return_ty.resolved = Some(return_ty.clone());
         self.current_function = Some(FunctionContext::new(return_ty));
         
@@ -118,6 +118,10 @@ impl<'ast, 'reporter, R: Reporter> MutVisitor<'ast, Option<ResolvedType>> for Ty
     fn visit_integer_literal(&mut self, expr: &'ast mut IntegerLiteral) -> Option<ResolvedType> {
         expr.ty = Some(ResolvedType::Int);
         Some(ResolvedType::Int)
+    }
+
+    fn visit_boolean_literal(&mut self, _expr: &'ast mut BooleanLiteral) -> Option<ResolvedType> {
+        Some(ResolvedType::Bool)
     }
 
     fn visit_variable_reference(&mut self, expr: &'ast mut VariableReference) -> Option<ResolvedType> {

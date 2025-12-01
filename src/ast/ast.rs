@@ -98,6 +98,19 @@ impl IntegerLiteral {
 }
 
 #[derive(Debug)]
+pub struct BooleanLiteral {
+    pub value: bool,
+}
+
+impl BooleanLiteral {
+    pub fn new(value: bool) -> Self {
+        Self {
+            value,
+        }
+    }
+}
+
+#[derive(Debug)]
 pub struct VariableReference {
     pub name: Span,
     pub ty: Option<ResolvedType>,
@@ -149,6 +162,7 @@ pub enum ExprKind {
     Decl(Box<Decl>),
 
     IntegerLiteral(IntegerLiteral),
+    BooleanLiteral(BooleanLiteral),
     VariableReference(VariableReference),
 
     Binary(BinaryExpr),

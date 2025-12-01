@@ -8,6 +8,13 @@ pub struct Constant {
 }
 
 impl Constant {
+    pub fn bool(value: bool) -> Self {
+        Self {
+            ty: Ty::Bool,
+            bytes: vec![if value { 1 } else { 0 }],
+        }
+    }
+
     pub fn int(value: i32) -> Self {
         Self {
             ty: Ty::Int,
@@ -23,23 +30,20 @@ impl Constant {
         &self.bytes
     }
 
-    pub fn bits_as_u32(&self) -> u32 {
-        assert_eq!(self.ty, Ty::Int);
-        assert_eq!(self.bytes.len(), 4);
-        u32::from_le_bytes(self.bytes[0..4].try_into().unwrap())
-    }
-
     pub fn bits_as_u64(&self) -> u64 {
-        // FIXME: so so bad
-        self.bits_as_u32() as u64
+        let mut value: u64 = 0;
+        for (i, byte) in self.bytes.iter().enumerate() {
+            value |= (*byte as u64) << (i * 8);
+        }
+        value
     }
 }
 
 impl Display for Constant {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self.ty {
-            Ty::Bool => write!(f, "{}", self.bits_as_u32() != 0),
-            Ty::Int => write!(f, "{} {}", self.ty, self.bits_as_u32()),
+            Ty::Bool => write!(f, "{}", self.bytes.get(0).expect("Bool constant must have 1 byte") != &0),
+            Ty::Int => write!(f, "{} {}", self.ty, self.bits_as_u64() & 0xFFFF_FFFF),
             Ty::Ptr => panic!("Pointer constants are not supported"),
         }
     }

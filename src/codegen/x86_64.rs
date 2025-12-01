@@ -26,6 +26,7 @@ impl isa::ISA for ISA {
 
     fn lower_type(&self, ty: &ir::Ty) -> Self::Type {
         match ty {
+            ir::Ty::Bool => Type::Byte,
             ir::Ty::Int => Type::DWord,
             ir::Ty::Ptr => Type::QWord,
         }

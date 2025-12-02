@@ -12,7 +12,35 @@ use std::collections::{
 use std::cmp::Ordering;
 
 pub fn codegen_function<I: ISA>(function: &ir::Function, isa: I, debug_dump: bool) -> Option<NativeFunction> {
-    let IRLoweringResult { mut dag } = lower_basic_block(function, &function.code, &isa);
+    let mut lines = Vec::new();
+    for bb in function.basic_blocks.iter() {
+        if debug_dump {
+            println!("Codegen for basic block: {}", bb.name());
+        }
+        let bb_lines = codegen_basic_block(function, bb, &isa, debug_dump);
+        match bb_lines {
+            Some(bb_lines) => {
+                lines.push(format!("{}:", bb.name()));
+                lines.extend(bb_lines.into_iter().map(|line| format!("  {}", line)));
+            }
+            None => {
+                return None;
+            }
+        }
+
+        if debug_dump {
+            println!("\n\n\n");
+        }
+    }
+    
+    Some(NativeFunction {
+        name: function.name.clone(),
+        lines,
+    })
+}
+
+pub fn codegen_basic_block<I: ISA>(function: &ir::Function, bb: &ir::BasicBlock, isa: &I, debug_dump: bool) -> Option<Vec<String>> {
+    let IRLoweringResult { mut dag } = lower_basic_block(function, bb, isa);
 
     if debug_dump {
         println!("Initial DAG:");
@@ -81,10 +109,7 @@ pub fn codegen_function<I: ISA>(function: &ir::Function, isa: I, debug_dump: boo
         }
     }
 
-    Some(NativeFunction {
-        name: function.name.clone(),
-        lines: native_instructions.iter().map(|i| i.to_string()).collect(),
-    })
+    Some(native_instructions.iter().map(|i| i.to_string()).collect())
 }
 
 fn create_selection_queue<I: ISA>(dag: &DAG<I>) -> Vec<NodeId> {

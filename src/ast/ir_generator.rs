@@ -1,19 +1,24 @@
 use crate::ast::*;
 use crate::ir;
-use std::collections::HashMap;
+use std::collections::{
+    HashMap,
+    HashSet,
+};
 
 pub struct IRGenerator {
     module: ir::Module,
-    function: Option<ir::Function>,
+    is_inside_function: bool,
     variables: HashMap<String, ir::Value>,
+    current_bb: Option<ir::BasicBlock>,
 }
 
 impl IRGenerator {
     pub fn new() -> Self {
         Self {
             module: ir::Module::new(),
-            function: None,
+            is_inside_function: false,
             variables: HashMap::new(),
+            current_bb: None,
         }
     }
 
@@ -23,18 +28,17 @@ impl IRGenerator {
     }
 
     fn get_bb_mut(&mut self) -> &mut ir::BasicBlock {
-        &mut self.function.as_mut().expect("Function must be set").code
+        self.current_bb.as_mut().expect("Current BB must be set")
     }
 }
 
 impl Visitor<'_, Option<ir::Value>> for IRGenerator {
     fn visit_func_decl(&mut self, func_decl: &ast::FunctionDecl, _node: &ast::Decl) -> Option<ir::Value> {
-        assert!(self.function.is_none(), "Function declaration within function declaration is not supported");
+        assert!(!self.is_inside_function, "Function declaration within function declaration is not supported");
 
-        let bb = ir::BasicBlock::new(func_decl.name.text().to_owned());
-        let function = ir::Function::new(func_decl.name.text().to_owned(), bb);
-        self.function = Some(function);
+        self.is_inside_function = true;
         self.variables.clear();
+        self.current_bb = Some(ir::BasicBlock::new(func_decl.name.text().to_owned()));
 
         let return_value = self.visit_expr(&func_decl.body);
         match return_value {
@@ -45,15 +49,16 @@ impl Visitor<'_, Option<ir::Value>> for IRGenerator {
             None => {}
         }
 
-        let function = self.function.take().unwrap();
+        let bb = self.current_bb.take().expect("Current BB must be set at the end of function IR generation");
+        let function = ir::Function::new(func_decl.name.text().to_owned(), HashSet::from([bb]));
         self.module.add_function(function);
-        self.function = None;
+        self.is_inside_function = false;
 
         None
     }
 
     fn visit_variable_decl(&mut self, variable: &'_ VariableDecl, _node: &'_ Decl) -> Option<ir::Value> {
-        assert!(self.function.is_some(), "Variable declaration outside of function is not supported");
+        assert!(self.is_inside_function, "Variable declaration outside of function is not supported");
 
         let ty = variable.ty.resolved.as_ref().expect("Variable declaration must have a resolved AST type during IR generation");
         let allocate = ir::Instruction::Allocate(lower_type(ty));

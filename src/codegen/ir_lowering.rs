@@ -21,7 +21,7 @@ struct IRLowering<'a, I: ISA> {
     control_token: Value,
     terminator_node: Option<NodeId>,
     lowered_values: HashMap<ir::InstructionRef, Value>,
-    next_stack_offset: u32,
+    next_stack_offset: u32, // FIXME: this should be per function, not per BB
 }
 
 impl <'a, I: ISA> IRLowering<'a, I> {
@@ -43,7 +43,7 @@ impl <'a, I: ISA> IRLowering<'a, I> {
     }
 
     fn lower(mut self) -> IRLoweringResult<I> {
-        for (instruction_ref, instruction) in self.function.code.instructions() {
+        for (instruction_ref, instruction) in self.bb.instructions() {
             if self.terminator_node.is_some() {
                 panic!("Cannot lower IR past a return instruction");
             }

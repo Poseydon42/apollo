@@ -1,6 +1,16 @@
-use super::{Instruction, Value};
-use super::instruction_list::*;
-use std::collections::HashMap;
+use super::{
+    Instruction,
+    instruction_list::*,
+    Value
+};
+use std::borrow::Borrow;
+use std::collections::{
+    HashMap,
+};
+use std::hash::{
+    Hash,
+    Hasher,
+};
 
 #[derive(Debug)]
 pub struct BasicBlock {
@@ -58,5 +68,25 @@ impl BasicBlock {
             false => None,
         };
         (instruction_ref, value)
+    }
+}
+
+impl PartialEq for BasicBlock {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name
+    }
+}
+
+impl Eq for BasicBlock {}
+
+impl Hash for BasicBlock {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.name.hash(state);
+    }
+}
+
+impl Borrow<str> for BasicBlock {
+    fn borrow(&self) -> &str {
+        &self.name
     }
 }

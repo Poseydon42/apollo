@@ -62,7 +62,7 @@ impl <'a, I: ISA> IRLowering<'a, I> {
 
             ir::Instruction::Allocate(ty) => self.lower_allocate(ty, value.unwrap()),
             ir::Instruction::Load { location, ty } => self.lower_load(location, ty, value.unwrap()),
-            ir::Instruction::Store { value: store_value, location } => self.lower_store(store_value, location, value.unwrap()),
+            ir::Instruction::Store { value: store_value, location } => self.lower_store(store_value, location),
 
             ir::Instruction::Return(value) => self.lower_return(value),
         }
@@ -128,7 +128,7 @@ impl <'a, I: ISA> IRLowering<'a, I> {
         self.set_lowered_value(ir_value, value);
     }
 
-    fn lower_store(&mut self, value: &ir::Value, location: &ir::Value, ir_value: ir::Value) {
+    fn lower_store(&mut self, value: &ir::Value, location: &ir::Value) {
         let value = self.get_lowered_value(value);
         let location = self.get_lowered_value(location);
         let store = self.dag.add_generic_node(
@@ -143,7 +143,6 @@ impl <'a, I: ISA> IRLowering<'a, I> {
             ]
         );
         self.control_token = self.dag.get_value(store, 0);
-        self.set_lowered_value(ir_value, value);
     }
 
     fn lower_return(&mut self, value: &ir::Value) {

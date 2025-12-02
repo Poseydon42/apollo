@@ -26,12 +26,13 @@ impl Instruction {
             Self::Load { location: _, ty } => Some(ty.clone()),
             Self::Store { .. } => None,
 
-            Self::Return(_value) => None,
+            Self::Return(..) => None,
         }
     }
 
     pub fn produces_value(&self) -> bool {
         match self {
+            Self::Store{..}  |
             Self::Return(..) => false,
 
             _ => true,

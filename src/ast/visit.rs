@@ -34,6 +34,7 @@ pub trait Visitor<'ast, ReturnType = ()> : Sized where
             ExprKind::BooleanLiteral(boolean_literal_expr) => self.visit_boolean_literal(boolean_literal_expr, expr),
             ExprKind::VariableReference(variable_reference_expr) => self.visit_variable_reference(variable_reference_expr, expr),
             ExprKind::Binary(binary_expr) => self.visit_binary_expr(binary_expr, expr),
+            ExprKind::If(if_expr) => self.visit_if(if_expr, expr),
             ExprKind::Return(return_expr) => self.visit_return(return_expr, expr),
         }
     }
@@ -63,6 +64,13 @@ pub trait Visitor<'ast, ReturnType = ()> : Sized where
     fn visit_binary_expr(&mut self, expr: &'ast BinaryExpr, _node: &'ast Expr) -> ReturnType {
         self.visit_expr(&*expr.lhs);
         self.visit_expr(&*expr.rhs);
+        Default::default()
+    }
+
+    fn visit_if(&mut self, expr: &'ast If, _node: &'ast Expr) -> ReturnType {
+        self.visit_expr(&*expr.condition);
+        self.visit_expr(&*expr.then_branch);
+        self.visit_expr(&*expr.else_branch);
         Default::default()
     }
 
@@ -106,6 +114,7 @@ pub trait MutVisitor<'ast, ReturnType = ()> : Sized
             ExprKind::BooleanLiteral(expr) => self.visit_boolean_literal(expr),
             ExprKind::VariableReference(expr) => self.visit_variable_reference(expr),
             ExprKind::Binary(expr) => self.visit_binary_expr(expr),
+            ExprKind::If(expr) => self.visit_if(expr),
             ExprKind::Return(expr) => self.visit_return(expr),
         }
     }
@@ -135,6 +144,13 @@ pub trait MutVisitor<'ast, ReturnType = ()> : Sized
     fn visit_binary_expr(&mut self, expr: &'ast mut BinaryExpr) -> ReturnType {
         self.visit_expr(&mut *expr.lhs);
         self.visit_expr(&mut *expr.rhs);
+        Default::default()
+    }
+
+    fn visit_if(&mut self, expr: &'ast mut If) -> ReturnType {
+        self.visit_expr(&mut *expr.condition);
+        self.visit_expr(&mut *expr.then_branch);
+        self.visit_expr(&mut *expr.else_branch);
         Default::default()
     }
 

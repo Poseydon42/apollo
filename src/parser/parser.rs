@@ -109,6 +109,7 @@ impl<'a, R: diagnostic::Reporter> Parser<'a, R> {
         self.match_integer_literal() ||
         self.match_boolean_literal() ||
         self.match_identifier() ||
+        self.match_if() ||
         self.match_return()
     }
 
@@ -126,6 +127,10 @@ impl<'a, R: diagnostic::Reporter> Parser<'a, R> {
 
     fn match_identifier(&self) -> bool {
         self.match_lexem(LexemKind::Identifier)
+    }
+
+    fn match_if(&self) -> bool {
+        self.match_lexem(LexemKind::If)
     }
 
     fn match_return(&self) -> bool {
@@ -205,6 +210,8 @@ impl<'a, R: diagnostic::Reporter> Parser<'a, R> {
             let decl = self.parse_decl()?;
             let span = decl.span.clone();
             Some(Expr::new(ExprKind::Decl(Box::new(decl)), span))
+        } else if self.match_if() {
+            self.parse_if()
         } else if self.match_return() {
             self.parse_return()
         } else {
@@ -260,6 +267,19 @@ impl<'a, R: diagnostic::Reporter> Parser<'a, R> {
     fn parse_identifier(&mut self) -> Option<Expr> {
         let identifier = self.eat(LexemKind::Identifier)?;
         Some(Expr::new(ExprKind::VariableReference(VariableReference::new(identifier.span.clone())), identifier.span.clone()))
+    }
+
+    fn parse_if(&mut self) -> Option<Expr> {
+        let start = self.eat(LexemKind::If)?.span.clone();
+        let condition = self.parse_expr()?;
+        let then_branch = self.parse_expr()?;
+
+        self.eat(LexemKind::Else)?;
+        let else_branch = self.parse_expr()?;
+
+        let span = start.merge_with(&else_branch.span);
+
+        Some(Expr::new(ExprKind::If(If::new(condition, then_branch, else_branch)), span))
     }
 
     fn parse_return(&mut self) -> Option<Expr> {

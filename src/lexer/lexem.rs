@@ -10,7 +10,9 @@ pub enum LexemKind {
     True,
     False,
 
+    Else,
     Fn,
+    If,
     Let,
     Return,
 
@@ -82,7 +84,9 @@ pub(super) fn is_keyword(identifier: &str) -> Option<LexemKind> {
         "true" => Some(LexemKind::True),
         "false" => Some(LexemKind::False),
         
+        "else" => Some(LexemKind::Else),
         "fn" => Some(LexemKind::Fn),
+        "if" => Some(LexemKind::If),
         "let" => Some(LexemKind::Let),
         "return" => Some(LexemKind::Return),
         _ => None,
@@ -96,7 +100,9 @@ impl Display for LexemKind {
             LexemKind::IntegerLiteral => write!(f, "IntegerLiteral"),
             LexemKind::True => write!(f, "True"),
             LexemKind::False => write!(f, "False"),
+            LexemKind::Else => write!(f, "Else"),
             LexemKind::Fn => write!(f, "Fn"),
+            LexemKind::If => write!(f, "If"),
             LexemKind::Let => write!(f, "Let"),
             LexemKind::Return => write!(f, "Return"),
             LexemKind::LeftParen => write!(f, "LeftParen"),

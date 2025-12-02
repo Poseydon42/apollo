@@ -143,6 +143,23 @@ impl BinaryExpr {
 }
 
 #[derive(Debug)]
+pub struct If {
+    pub condition: Box<Expr>,
+    pub then_branch: Box<Expr>,
+    pub else_branch: Box<Expr>,
+}
+
+impl If {
+    pub fn new(condition: Expr, then_branch: Expr, else_branch: Expr) -> Self {
+        Self {
+            condition: Box::new(condition),
+            then_branch: Box::new(then_branch),
+            else_branch: Box::new(else_branch),
+        }
+    }
+}
+
+#[derive(Debug)]
 pub struct Return {
     pub value: Box<Expr>,
 }
@@ -166,6 +183,8 @@ pub enum ExprKind {
     VariableReference(VariableReference),
 
     Binary(BinaryExpr),
+
+    If(If),
 
     Return(Return),
 }

@@ -153,6 +153,24 @@ impl<'ast, 'reporter, R: Reporter> MutVisitor<'ast, Option<ResolvedType>> for Ty
         }
     }
 
+    fn visit_if(&mut self, expr: &'ast mut If) -> Option<ResolvedType> {
+        let condition_type = self.visit_expr(&mut expr.condition)?;
+        if condition_type != ResolvedType::Bool {
+            self.reporter.report(create_diagnostic!(IfConditionNotBool, expr.condition.span.clone(), condition_type.to_string()));
+            return None;
+        }
+
+        let then_type = self.visit_expr(&mut expr.then_branch)?;
+        let else_type = self.visit_expr(&mut expr.else_branch)?;
+
+        if then_type != else_type {
+            self.reporter.report(create_diagnostic!(IfBranchesTypeMismatch, expr.else_branch.span.clone(), then_type.to_string(), else_type.to_string()));
+            return None;
+        }
+
+        Some(then_type)
+    }
+
     fn visit_return(&mut self, expr: &'ast mut Return) -> Option<ResolvedType> {
         if self.current_function.is_none() {
             panic!("Return expression outside of function context is not allowed");

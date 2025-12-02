@@ -66,6 +66,24 @@ impl<'ast, 'writer, W: Write> Visitor<'ast> for ASTPrinter<'writer, W> {
         increase_indent_and!(self, self.visit_expr(&*expr.lhs), self.visit_expr(&*expr.rhs));
     }
 
+    fn visit_if(&mut self, expr: &'ast If, node: &'ast Expr) -> () {
+        writeln_with_ident!(self, "If @ ({},{}):", node.span.line(), node.span.column());
+        increase_indent_and!(self,
+            {
+                writeln_with_ident!(self, "Condition:");
+                increase_indent_and!(self, self.visit_expr(&*expr.condition));
+            },
+            {
+                writeln_with_ident!(self, "Then:");
+                increase_indent_and!(self, self.visit_expr(&*expr.then_branch));
+            },
+            {
+                writeln_with_ident!(self, "Else:");
+                increase_indent_and!(self, self.visit_expr(&*expr.else_branch));
+            }
+        );
+    }
+
     fn visit_return(&mut self, expr: &'ast Return, node: &'ast Expr) -> () {
         writeln_with_ident!(self, "Return @ ({},{}):", node.span.line(), node.span.column());
         increase_indent_and!(self, self.visit_expr(&*expr.value));

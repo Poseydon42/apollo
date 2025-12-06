@@ -64,6 +64,10 @@ impl <'a, I: ISA> IRLowering<'a, I> {
             ir::Instruction::Load { location, ty } => self.lower_load(location, ty, value.unwrap()),
             ir::Instruction::Store { value: store_value, location } => self.lower_store(store_value, location),
 
+            ir::Instruction::Phi { incoming, ty } => self.lower_phi(incoming, ty, value.unwrap()),
+
+            ir::Instruction::Jump(target) => self.lower_jump(target),
+            ir::Instruction::Branch{ condition, then_bb, else_bb } => self.lower_branch(condition, then_bb, else_bb),
             ir::Instruction::Return(value) => self.lower_return(value),
         }
     }
@@ -143,6 +147,21 @@ impl <'a, I: ISA> IRLowering<'a, I> {
             ]
         );
         self.control_token = self.dag.get_value(store, 0);
+    }
+
+    #[allow(unused_variables)]
+    fn lower_phi(&mut self, incoming: &Vec<(ir::Value, String)>, ty: &ir::Ty, ir_value: ir::Value) {
+        
+    }
+
+    #[allow(unused_variables)]
+    fn lower_jump(&mut self, target: &String) {
+
+    }
+
+    #[allow(unused_variables)]
+    fn lower_branch(&mut self, condition: &ir::Value, then_label: &String, else_label: &String) {
+        
     }
 
     fn lower_return(&mut self, value: &ir::Value) {

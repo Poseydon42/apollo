@@ -18,6 +18,12 @@ pub enum GenericOpcode<I: ISA> {
     ///  - the value in the register
     Register(I::Register),
 
+    /// Inputs:
+    /// 
+    /// Outputs:
+    ///  - the value taken from the predescessor BB
+    Phi(Vec<(ir::Value, String)>),
+
 
     // Arithmetic opcodes
  
@@ -58,9 +64,21 @@ pub enum GenericOpcode<I: ISA> {
     Enter,
 
     /// Inputs:
+    ///  - control token
+    ///  - all values defined within this BB that are used in descendant BBs
+    /// Outputs:
+    Jump(String),
+
+    /// Inputs:
+    ///  - control token
+    ///  - condition (of integer type)
+    ///  - all values defined within this BB that are used in descendant BBs
+    /// Outputs:
+    Branch(String, String),
+
+    /// Inputs:
     ///   - control token
     ///   - value to return
-    ///
     /// Outputs:
     Ret,
 }
@@ -98,10 +116,10 @@ impl<I: ISA> Opcode<I> {
         }
     }
 
-    pub fn get_native(&self) -> I::Opcode {
+    pub fn get_native(&self) -> &I::Opcode {
         match self {
             Opcode::Generic(_) => panic!("Opcode is not native"),
-            Opcode::Native(opcode) => *opcode,
+            Opcode::Native(opcode) => opcode,
         }
     }
 
@@ -142,11 +160,23 @@ impl<I: ISA> Display for GenericOpcode<I> {
         match self {
             GenericOpcode::Constant(constant) => write!(f, "Constant({})", constant),
             GenericOpcode::Register(register) => write!(f, "Register({})", register.to_string()),
+            GenericOpcode::Phi(values) => {
+                write!(f, "Phi(")?;
+                for (index, (value, bb)) in values.iter().enumerate() {
+                    if index != 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{} -> {}", bb, value)?;
+                }
+                write!(f, ")")
+            }
             GenericOpcode::Add => write!(f, "Add"),
             GenericOpcode::Sub => write!(f, "Sub"),
             GenericOpcode::Load => write!(f, "Load"),
             GenericOpcode::Store => write!(f, "Store"),
             GenericOpcode::Enter => write!(f, "Enter"),
+            GenericOpcode::Jump(target) => write!(f, "Jump({})", target),
+            GenericOpcode::Branch(then_bb, else_bb) => write!(f, "Branch({}, {})", then_bb, else_bb),
             GenericOpcode::Ret => write!(f, "Ret"),
         }
     }

@@ -1,7 +1,11 @@
+use crate::ir;
 use super::isa::*;
 use super::opcode::*;
 use core::panic;
-use std::collections::HashSet;
+use std::collections::{
+    HashMap,
+    HashSet,
+};
 use std::fmt::*;
 
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
@@ -211,6 +215,7 @@ struct NodeInput<I: ISA> {
 pub struct DAG<I: ISA> {
     nodes: Vec<Node<I>>,
     root: Option<NodeId>,
+    ir_to_dag_value_map: HashMap<ir::Value, Value>,
 }
 
 impl <I: ISA> DAG<I> {
@@ -218,6 +223,7 @@ impl <I: ISA> DAG<I> {
         Self {
             nodes: Vec::new(),
             root: None,
+            ir_to_dag_value_map: HashMap::new(),
         }
     }
 
@@ -295,6 +301,14 @@ impl <I: ISA> DAG<I> {
         }
     }
 
+    pub fn get_value_producing_ir_value(&self, ir_value: &ir::Value) -> Option<Value> {
+        self.ir_to_dag_value_map.get(ir_value).cloned()
+    }
+
+    pub fn set_ir_value_produced_by_dag_value(&mut self, ir_value: ir::Value, dag_value: Value) {
+        assert!(self.ir_to_dag_value_map.insert(ir_value.clone(), dag_value).is_none(), "IR value {} is already produced by a different DAG value", ir_value);
+    }
+
     pub fn set_allowed_registers(&mut self, node_id: NodeId, port: PortId, registers: Vec<I::Register>) {
         let node = self.get_mut(node_id);
         assert!(port < node.inputs.len(), "Input index out of bounds for node {}", node_id.0);
@@ -327,12 +341,19 @@ impl <I: ISA> DAG<I> {
 
         let old_node_outputs = self.get(old_id).outputs.clone(); // Making a copy here to shut the borrow checker up
         for (port, output) in old_node_outputs.iter().enumerate() {
+            let old_value = self.get_value(old_id, port);
+            let new_value = self.get_value(new_id, port);
+            
             for (user_id, user_port) in &output.uses {
                 // NOTE: this is so that the old node can still be used as the input of the new node
                 if *user_id == new_id {
                     continue;
                 }
-                self.set_input(*user_id, *user_port, self.get_value(new_id, port));
+                self.set_input(*user_id, *user_port, new_value);
+            }
+
+            for (_, old_dag_value) in self.ir_to_dag_value_map.iter_mut().filter(|(_, old_dag_value)| **old_dag_value == old_value) {
+                *old_dag_value = new_value;
             }
         }
 
@@ -345,7 +366,7 @@ impl <I: ISA> DAG<I> {
         }
     }
 
-    fn erase_node(&mut self, node: NodeId) {
+    pub fn erase_node(&mut self, node: NodeId) {
         if self.get(node).all_uses().next() != None {
             panic!("Trying to erase node that has uses! DAG::erase_node() should only be used on nodes that are proven to not be used anymore (i.e. they are dead)");
         }

@@ -1,20 +1,48 @@
+use crate::ir;
 use super::dag::*;
 use super::isa::*;
 use super::opcode::*;
-use std::collections::{HashMap, HashSet};
+use std::collections::{
+    HashMap,
+    HashSet
+};
 
 pub struct RegisterAllocationResult<I: ISA> {
     pub value_map: HashMap<Value, I::Register>,
 }
 
-pub fn allocate_registers<I: ISA>(dag: &mut DAG<I>, order: &mut Vec<NodeId>, isa: &I) -> RegisterAllocationResult<I> {
-    let mut value_map = HashMap::new();
+pub struct RegisterAllocationState<I: ISA> {
+    // Maps (BB, Value) -> Register if given value inside given BB is used by (one or more) phi nodes,
+    // and the "input" of the phi node has been allocated to a register.
+    values_allocated_by_phi_nodes: HashMap<(String, ir::Value), I::Register>,
+}
+
+impl<I: ISA> RegisterAllocationState<I> {
+    pub fn new() -> Self {
+        Self {
+            values_allocated_by_phi_nodes: HashMap::new(),
+        }
+    }
+}
+
+pub fn allocate_registers<I: ISA>(state: &mut RegisterAllocationState<I>, bb_name: &str, dag: &mut DAG<I>, order: &mut Vec<NodeId>, isa: &I) -> RegisterAllocationResult<I> {
+    let mut value_map: HashMap<Value, I::Register> = HashMap::new();
     let mut free_registers : HashSet<_> = isa.get_usable_registers().into_iter().collect();
     let live_ranges = calculate_live_ranges(dag, order);
     
     println!("Live ranges:");
     for (value, (start, end)) in &live_ranges {
         println!("\tValue {} live from {} to {}", value, start, end);
+    }
+
+    for ((value_bb_name, value), register) in &state.values_allocated_by_phi_nodes {
+        if value_bb_name != bb_name {
+            continue;
+        }
+
+        let dag_value = dag.get_value_producing_ir_value(value).expect("Input value for phi node must have a corresponding DAG value");
+        value_map.insert(dag_value, *register);
+        free_registers.remove(register);
     }
 
     // NOTE: we iterate in reverse order and map on encountering a use since restrictions on
@@ -74,6 +102,17 @@ pub fn allocate_registers<I: ISA>(dag: &mut DAG<I>, order: &mut Vec<NodeId>, isa
             } else {
                 panic!("No free allowed register available for value {}", value);
             }
+
+            // If the value we just allocated was a phi node output, we need to record this so that the predescessor BBs
+            // that provide the phi inputs put the corresponding input values in the same register as the phi's output.
+            match node.opcode() {
+                Opcode::Generic(GenericOpcode::Phi(values)) => {
+                    for (phi_input_value, pred_bb_name) in values {
+                        state.values_allocated_by_phi_nodes.insert((pred_bb_name.clone(), phi_input_value.clone()), value_map[value]);
+                    }
+                }
+                _ => {}
+            }
         }
 
         // We need to do one last minute correction: if we have an instruction that takes a fixed register as input,
@@ -116,7 +155,7 @@ pub fn allocate_registers<I: ISA>(dag: &mut DAG<I>, order: &mut Vec<NodeId>, isa
 
 fn is_register_type<I: ISA>(ty: &OutputType<I>) -> bool {
     match ty {
-        OutputType::Native(_) => true,
+        OutputType::Native(ty) => ty.is_register_type(),
 
         _ => false,
     }

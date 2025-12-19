@@ -36,11 +36,11 @@ pub trait ISA: Sized + PartialEq {
     }
 }
 
-pub trait NativeOpcode : Copy + ToString + Eq {
+pub trait NativeOpcode : Clone + ToString + Eq {
     fn is_input_overwritten_by_output(&self, input: PortId) -> Option<PortId>;
 }
 
-pub trait NativeInstruction : Copy + Debug + ToString + Eq {
+pub trait NativeInstruction : Clone + Debug + ToString + Eq {
 
 }
 
@@ -50,4 +50,6 @@ pub trait NativeRegister : Copy + Debug + ToString + Eq + Hash {
 
 pub trait NativeType : Copy + Debug + ToString + Eq {
     fn size(&self) -> u32;
+
+    fn is_register_type(&self) -> bool;
 }

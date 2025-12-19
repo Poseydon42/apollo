@@ -9,7 +9,8 @@ use std::rc::Rc;
 fn main() -> Result<(), i32> {
     let src = Rc::new(
         r"fn main() -> i32 {\
-            if true 42 else 0\
+            let cond: bool = true;\
+            if cond 3 + 3 else 6 + 6\
         }".to_owned());
 
     let mut lexer = Lexer::new(src);
@@ -42,11 +43,11 @@ fn main() -> Result<(), i32> {
     let ir_generator = IRGenerator::new();
     let ir_module = ir_generator.generate(&module);
     let function = &ir_module.functions()[0];
-    for bb in &function.basic_blocks {
+    for bb in function.get_basic_blocks() {
         println!("{}:", bb.name());
-        for (instruction_ref, instruction) in bb.instructions() {
+        for (instruction_ref, instruction) in function.get_instructions_in_basic_block(bb.name()) {
             if instruction.produces_value() {
-                println!("  {} = {}", bb.get_value(instruction_ref).unwrap(), instruction);
+                println!("  {} = {}", function.get_value(instruction_ref).unwrap(), instruction);
             } else {
                 println!("  {}", instruction);
             }

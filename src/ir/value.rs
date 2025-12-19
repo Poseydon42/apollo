@@ -1,7 +1,12 @@
-use super::{BasicBlock,Constant,InstructionRef,Ty};
+use super::{
+    Constant,
+    InstructionRef,
+    Function,
+    Ty
+};
 use std::fmt::*;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Value {
     Constant(Constant),
     Instruction(InstructionRef, String),
@@ -12,10 +17,10 @@ impl Value {
         Self::Constant(value)
     }
 
-    pub fn ty<'a>(&'a self, bb: &'a BasicBlock) -> Ty {
+    pub fn ty<'a>(&'a self, function: &'a Function) -> Ty {
         match self {
             Self::Constant(c) => c.ty().clone(),
-            Self::Instruction(instruction_ref, _name) => bb.get_instruction(*instruction_ref).ty(bb).unwrap(),
+            Self::Instruction(instruction_ref, _name) => function.get_instruction(*instruction_ref).ty(function).unwrap(),
         }
     }
 }

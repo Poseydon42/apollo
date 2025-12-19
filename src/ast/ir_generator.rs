@@ -1,6 +1,5 @@
 use crate::ast::*;
 use crate::ir;
-use ordermap::OrderSet;
 use std::collections::HashMap;
 
 pub struct IRGenerator {
@@ -9,9 +8,9 @@ pub struct IRGenerator {
 }
 
 struct FunctionContext {
+    function: ir::Function,
     variables: HashMap<String, ir::Value>,
-    basic_blocks: OrderSet<ir::BasicBlock>,
-    current_bb: ir::BasicBlock,
+    current_bb: String,
     next_if_bb_id: u32,
 }
 
@@ -36,8 +35,30 @@ impl IRGenerator {
         self.function_context.as_mut().expect("Current function context must be set")
     }
 
-    fn get_bb_mut(&mut self) -> &mut ir::BasicBlock {
-        &mut self.get_function_context_mut().current_bb
+    fn get_function(&self) -> &ir::Function {
+        &self.get_function_context().function
+    }
+
+    fn get_function_mut(&mut self) -> &mut ir::Function {
+        &mut self.get_function_context_mut().function
+    }
+
+    fn start_new_bb(&mut self, name: String) {
+        let bb = ir::BasicBlock::new(name.clone());
+        self.get_function_mut().add_basic_block(bb);
+        self.get_function_context_mut().current_bb = name;
+    }
+
+    fn append_instruction(&mut self, instruction: ir::Instruction) -> (ir::InstructionRef, Option<ir::Value>) {
+        let function_context = self.get_function_context_mut();
+        let bb = &function_context.current_bb;
+        function_context.function.append_instruction(bb, instruction)
+    }
+
+    fn append_named_instruction(&mut self, instruction: ir::Instruction, name: String) -> (ir::InstructionRef, Option<ir::Value>) {
+        let function_context = self.get_function_context_mut();
+        let bb = &function_context.current_bb;
+        function_context.function.append_named_instruction(bb, instruction, name)
     }
 }
 
@@ -46,32 +67,24 @@ impl Visitor<'_, Option<ir::Value>> for IRGenerator {
         assert!(self.function_context.is_none(), "Function declaration within function declaration is not supported");
 
         self.function_context = Some(FunctionContext {
+            function: ir::Function::new(func_decl.name.text().to_owned()),
             variables: HashMap::new(),
-            basic_blocks: OrderSet::new(),
-            current_bb: ir::BasicBlock::new(func_decl.name.text().to_owned()),
+            current_bb: String::new(),
             next_if_bb_id: 0,
         });
+        self.start_new_bb(func_decl.name.text().to_owned());
 
         let return_value = self.visit_expr(&func_decl.body);
         match return_value {
             Some(val) => {
                 let ret_instruction = ir::Instruction::Return(val);
-                self.get_bb_mut().append_instruction(ret_instruction);
-
-                // Trick here: we can't not have a BB, but since we're done with this function anyway,
-                // we can just swap the current BB with an empty one and insert the completed BB into the function's set of BBs
-                let new_bb = ir::BasicBlock::new("".to_owned());
-                let completed_bb = std::mem::replace(self.get_bb_mut(), new_bb);
-                self.get_function_context_mut().basic_blocks.insert(completed_bb);
+                self.append_instruction(ret_instruction);
             }
             None => {}
         }
 
         let function_context = self.function_context.take().expect("Function context must be set");
-
-        let basic_blocks = function_context.basic_blocks;
-        let function = ir::Function::new(func_decl.name.text().to_owned(), basic_blocks);
-        self.module.add_function(function);
+        self.module.add_function(function_context.function);
 
         None
     }
@@ -81,11 +94,11 @@ impl Visitor<'_, Option<ir::Value>> for IRGenerator {
 
         let ty = variable.ty.resolved.as_ref().expect("Variable declaration must have a resolved AST type during IR generation");
         let allocate = ir::Instruction::Allocate(lower_type(ty));
-        let ptr = self.get_bb_mut().append_named_instruction(allocate, variable.name.text().to_owned()).1.unwrap();
+        let ptr = self.append_named_instruction(allocate, variable.name.text().to_owned()).1.unwrap();
 
         let init = self.visit_expr(&variable.init).expect("Variable initialization expression must produce a node");
         let store = ir::Instruction::Store { value: init.clone(), location: ptr.clone() };
-        self.get_bb_mut().append_instruction(store);
+        self.append_instruction(store);
         self.function_context.as_mut().unwrap().variables.insert(variable.name.text().to_owned(), ptr.clone());
 
         // NOTE: variable declarations produce a value corresponding to their initialized value
@@ -127,7 +140,7 @@ impl Visitor<'_, Option<ir::Value>> for IRGenerator {
             location: ptr.clone(), 
             ty: lower_type(expr.ty.as_ref().expect("Variable reference nodes must have a resolved type during IR generation"))
         };
-        self.get_bb_mut().append_instruction(load).1
+        self.append_instruction(load).1
     }
 
     fn visit_binary_expr(&mut self, expr: &BinaryExpr, _node: &Expr) -> Option<ir::Value> {
@@ -137,7 +150,7 @@ impl Visitor<'_, Option<ir::Value>> for IRGenerator {
             ast::BinaryOp::Add => ir::Instruction::Add(lhs, rhs),
             ast::BinaryOp::Sub => ir::Instruction::Sub(lhs, rhs),
         };
-        self.get_bb_mut().append_instruction(instruction).1
+        self.append_instruction(instruction).1
     }
 
     fn visit_if(&mut self, expr: &'_ If, _node: &'_ Expr) -> Option<ir::Value> {
@@ -146,44 +159,38 @@ impl Visitor<'_, Option<ir::Value>> for IRGenerator {
         let then_bb_name = format!("then.{}", self.get_function_context().next_if_bb_id);
         let else_bb_name = format!("else.{}", self.get_function_context().next_if_bb_id);
         let joining_bb_name = format!("post_if.{}", self.get_function_context().next_if_bb_id);
+        
         self.get_function_context_mut().next_if_bb_id += 1;
         let branch_instruction = ir::Instruction::Branch {
             condition: condition.clone(),
             then_bb: then_bb_name.clone(),
             else_bb: else_bb_name.clone(),
         };
-        self.get_bb_mut().append_instruction(branch_instruction);
+        self.append_instruction(branch_instruction);
 
-        let then_bb = ir::BasicBlock::new(then_bb_name.clone());
-        let if_bb = std::mem::replace(&mut self.get_function_context_mut().current_bb, then_bb);
-        self.get_function_context_mut().basic_blocks.insert(if_bb);
+        self.start_new_bb(then_bb_name.clone());
         let then_value = self.visit_expr(&*expr.then_branch).expect("Then branch of if expression must produce a node");
-        let then_value_ty = then_value.ty(&self.get_function_context().current_bb);
+        let then_value_ty = then_value.ty(self.get_function());
         let jump_to_joining = ir::Instruction::Jump(joining_bb_name.clone());
-        self.get_bb_mut().append_instruction(jump_to_joining);
+        self.append_instruction(jump_to_joining);
 
-        let else_bb = ir::BasicBlock::new(else_bb_name.clone());
-        let then_bb = std::mem::replace(&mut self.get_function_context_mut().current_bb, else_bb);
-        self.get_function_context_mut().basic_blocks.insert(then_bb);
+        self.start_new_bb(else_bb_name.clone());
         let else_value = self.visit_expr(&*expr.else_branch).expect("Else branch of if expression must produce a node");
         let jump_to_joining = ir::Instruction::Jump(joining_bb_name.clone());
-        self.get_bb_mut().append_instruction(jump_to_joining);
+        self.append_instruction(jump_to_joining);
 
-        let joining_bb = ir::BasicBlock::new(joining_bb_name.clone());
-        let else_bb = std::mem::replace(&mut self.get_function_context_mut().current_bb, joining_bb);
-        self.get_function_context_mut().basic_blocks.insert(else_bb);
-        
+        self.start_new_bb(joining_bb_name.clone());
         let phi = ir::Instruction::Phi {
             incoming: vec![ (then_value, then_bb_name), (else_value, else_bb_name) ],
             ty: then_value_ty
         };
-        self.get_bb_mut().append_instruction(phi).1
+        self.append_instruction(phi).1
     }
 
     fn visit_return(&mut self, expr: &Return, _node: &Expr) -> Option<ir::Value> {
         let value = self.visit_expr(&*expr.value).expect("Return expression must produce a node");
         let instruction = ir::Instruction::Return(value);
-        self.get_bb_mut().append_instruction(instruction);
+        self.append_instruction(instruction);
         None
     }
 }

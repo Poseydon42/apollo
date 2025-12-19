@@ -1,4 +1,8 @@
-use super::{BasicBlock,Ty,Value};
+use super::{
+    Function,
+    Ty,
+    Value
+};
 use std::fmt::*;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -18,12 +22,29 @@ pub enum Instruction {
 }
 
 impl Instruction {
-    pub fn ty<'a>(&'a self, bb: &'a BasicBlock) -> Option<Ty> {
+    pub fn operands(&self) -> Vec<&Value> {
+        match self {
+            Self::Add(lhs, rhs) |
+            Self::Sub(lhs, rhs) => vec![lhs, rhs],
+
+            Self::Allocate(_) => vec![],
+            Self::Load { location, .. } => vec![location],
+            Self::Store { value, location } => vec![value, location],
+
+            Self::Phi { incoming, .. } => incoming.iter().map(|(value, _)| value).collect(),
+
+            Self::Jump(_) => vec![],
+            Self::Branch { condition, .. } => vec![condition],
+            Self::Return(value) => vec![value],
+        }
+    }
+
+    pub fn ty<'a>(&'a self, function: &'a Function) -> Option<Ty> {
         match self {
             Self::Add(lhs, rhs) |
             Self::Sub(lhs, rhs) => {
-                assert_eq!(lhs.ty(bb), rhs.ty(bb), "Operands of an arithmetic operation must have the same type");
-                Some(lhs.ty(bb).clone())
+                assert_eq!(lhs.ty(function), rhs.ty(function), "Operands of an arithmetic operation must have the same type");
+                Some(lhs.ty(function).clone())
             }
 
             Self::Allocate(..) => Some(Ty::Ptr),

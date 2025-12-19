@@ -1,7 +1,7 @@
 use super::Ty;
 use std::fmt::*;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Constant {
     ty: Ty,
     bytes: Vec<u8>,

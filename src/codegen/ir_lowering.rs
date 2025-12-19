@@ -43,13 +43,16 @@ impl <'a, I: ISA> IRLowering<'a, I> {
     }
 
     fn lower(mut self) -> IRLoweringResult<I> {
-        for (instruction_ref, instruction) in self.bb.instructions() {
+        for (instruction_ref, instruction) in self.function.get_instructions_in_basic_block(self.bb.name()) {
             if self.terminator_node.is_some() {
                 panic!("Cannot lower IR past a return instruction");
             }
-            self.lower_instruction(instruction, self.bb.get_value(instruction_ref));
+            self.lower_instruction(instruction, self.function.get_value(instruction_ref));
         }
         self.dag.set_root(self.terminator_node.expect("Terminator node must be set during lowering"));
+        for (instruction_ref, dag_value) in &self.lowered_values {
+            self.dag.set_ir_value_produced_by_dag_value(self.function.get_value(*instruction_ref).unwrap(), dag_value.clone());
+        }
         IRLoweringResult {
             dag: self.dag
         }
@@ -149,19 +152,53 @@ impl <'a, I: ISA> IRLowering<'a, I> {
         self.control_token = self.dag.get_value(store, 0);
     }
 
-    #[allow(unused_variables)]
     fn lower_phi(&mut self, incoming: &Vec<(ir::Value, String)>, ty: &ir::Ty, ir_value: ir::Value) {
+        assert!(incoming.len() > 0, "Cannot lower a phi instruction with no values");
         
+        let ty = self.isa.lower_type(&ty);
+        for (value, _) in incoming {
+            let value_ty = self.isa.lower_type(&value.ty(self.function));
+            assert_eq!(value_ty, ty, "All incoming values of a phi instruction must have the same lowered type");
+        }
+
+        let phi = self.dag.add_generic_node(
+            GenericOpcode::Phi(incoming.clone()),
+            vec![],
+            vec![ OutputType::Native(ty.clone()) ]
+        );
+        let phi_value = self.dag.get_value(phi, 0);
+        
+        self.set_lowered_value(ir_value, phi_value);
     }
 
-    #[allow(unused_variables)]
     fn lower_jump(&mut self, target: &String) {
-
+        let mut inputs = vec![
+            self.control_token,
+        ];
+        inputs.append(&mut self.get_values_used_in_descendant_bbs());
+        let jump = self.dag.add_generic_node(
+            GenericOpcode::Jump(target.clone()),
+            inputs,
+            vec![]
+        );
+        self.control_token = DAG::<I>::null_value();
+        self.terminator_node = Some(jump);
     }
 
-    #[allow(unused_variables)]
     fn lower_branch(&mut self, condition: &ir::Value, then_label: &String, else_label: &String) {
-        
+        let condition = self.get_lowered_value(condition);
+        let mut inputs = vec![
+            self.control_token,
+            condition,
+        ];
+        inputs.append(&mut self.get_values_used_in_descendant_bbs());
+        let branch = self.dag.add_generic_node(
+            GenericOpcode::Branch(then_label.clone(), else_label.clone()),
+            inputs,
+            vec![]
+        );
+        self.control_token = DAG::<I>::null_value();
+        self.terminator_node = Some(branch);
     }
 
     fn lower_return(&mut self, value: &ir::Value) {
@@ -220,5 +257,13 @@ impl <'a, I: ISA> IRLowering<'a, I> {
 
     fn get_pointer_type(&self) -> OutputType<I> {
         OutputType::Native(self.isa.get_pointer_type())
+    }
+
+    fn get_values_used_in_descendant_bbs(&self) -> Vec<Value> {
+        self.lowered_values
+            .iter()
+            .filter(|(instruction, _)| self.function.is_instruction_value_used_in_external_basic_blocks(**instruction))
+            .map(|(_, value)| value.clone())
+            .collect()
     }
 }

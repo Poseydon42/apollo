@@ -1,6 +1,6 @@
 use std::fmt::*;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Ty {
     Bool,
     Int, // FIXME: i32 for now, add more later

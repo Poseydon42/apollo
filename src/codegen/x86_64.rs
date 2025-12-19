@@ -48,6 +48,8 @@ impl isa::ISA for ISA {
             GenericOpcode::Load => self.lower_load(dag, instruction),
             GenericOpcode::Store => self.lower_store(dag, instruction),
 
+            GenericOpcode::Jump(target) => self.lower_jump(dag, instruction, target.clone()),
+            GenericOpcode::Branch(then_label, else_label) => self.lower_branch(dag, instruction, then_label.clone(), else_label.clone()),
             GenericOpcode::Ret => self.lower_ret(dag, instruction),
 
             _ => todo!()
@@ -137,8 +139,9 @@ impl isa::ISA for ISA {
             }
 
             Opcode::ADD |
-            Opcode::SUB => {
-                let ty = instruction.get_output_type(0).get_native();
+            Opcode::SUB |
+            Opcode::TEST => {
+                let ty = dag.get_value_type(instruction.get_input(0)).get_native();
                 let lhs = register_allocation.value_map
                     .get(&instruction.get_input(0))
                     .expect("LHS register for ADD/SUB should have been allocated");
@@ -153,14 +156,16 @@ impl isa::ISA for ISA {
                     Operand::Register(*rhs)
                 };
                 Instruction::two_args(
-                    instruction.opcode().get_native(),
+                    instruction.opcode().get_native().clone(),
                     lhs,
                     rhs,
                     *ty,
                 )
             }
 
-            Opcode::RET => Instruction::no_args(instruction.opcode().get_native()),
+            Opcode::JMP(condition, label) => Instruction::one_arg(Opcode::JMP(*condition, label.clone()), Operand::Label(label.clone()), Type::Label),
+
+            Opcode::RET => Instruction::no_args(Opcode::RET),
 
             _ => unimplemented!(),
         })
@@ -271,6 +276,71 @@ impl ISA {
         dag.replace_node(instruction, store);
     }
 
+    fn lower_jump(&self, dag: &mut DAG<Self>, instruction: NodeId, target: String) {
+        // NOTE: the inputs of the jump node are the control token and any values computed in this BB that are used in descendant BBs.
+        //       We should preserve those inputs when lowering to a native jump instruction, to ensure that the instructions that comput
+        //       those values are not seen as dead code and eliminated.
+        let jump = dag.get(instruction);
+        let jump = dag.add_native_node(
+            Opcode::JMP(Condition::Always, target),
+            jump.inputs().cloned().collect(),
+            vec![],
+        );
+        dag.replace_node(instruction, jump);
+    }
+
+    fn lower_branch(&self, dag: &mut DAG<Self>, instruction: NodeId, then_label: String, else_label: String) {
+        let branch = dag.get(instruction);
+        // NOTE: see the note in the lower_jump function about preserving inputs
+        let mut inputs: Vec<_> = branch.inputs().cloned().collect();
+
+        // What we're trying to do:
+        // test cond, cond
+        // jne then_label
+        // jmp else_label
+        
+        let condition = inputs[1];
+        let test = dag.add_native_node(
+            Opcode::TEST,
+            vec![
+                condition,
+                condition
+            ],
+            vec![
+                OutputType::Native(Type::Flags)
+            ],
+        );
+
+        inputs[1] = dag.get_value(test, 0);
+        let jump_else = dag.add_native_node(
+            Opcode::JMP(Condition::Zero, else_label),
+            inputs,
+            vec![
+                OutputType::Control
+            ]
+        );
+        let ctrl = dag.get_value(jump_else, 0);
+
+        let jump_then = dag.add_native_node(
+            Opcode::JMP(Condition::Always, then_label),
+            vec![
+                ctrl
+            ],
+            vec![
+                OutputType::Control
+            ]
+        );
+
+        // We can't perform a simple node replacement here as we're replacing with more than one node, so we'll
+        // need to do some remapping ourselves. What makes this easier is that Branch nodes are BB terminators,
+        // so we only need to remap the inputs of branch onto our first jump (which we have already done),
+        // change the DAG root, and remove the original branch node.
+        // FIXME: maybe we should turn this into a DAG method instead? It could be used in more than one place
+        assert!(instruction == dag.root().expect("DAG must have a root when lowering branch"));
+        dag.set_root(jump_then);
+        dag.erase_node(instruction);
+    }
+
     fn lower_ret(&self, dag: &mut DAG<Self>, instruction: NodeId) {
         let ret = dag.get(instruction);
         let ctrl  = ret.get_input(0);
@@ -349,6 +419,14 @@ enum MemoryAddressMatch {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum Condition {
+    Always,
+    Zero,
+
+    // FIXME: add more conditions as needed
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 #[allow(non_camel_case_types)]
 pub enum Opcode {
     /// Notation:
@@ -373,6 +451,15 @@ pub enum Opcode {
     /// sub <vreg>, <const/reg/vreg>; (lhs, rhs) -> (value)
     SUB,
 
+    /// test <vreg>, <vreg>; (lhs, rhs) -> (flags)
+    /// NOTE: for now, we're not putting this onto the control chain despite it having side effects (flags),
+    /// because none of the other instructions are affected by flags, other than conditional branches, but
+    /// those take the result of test as an input anyway
+    TEST,
+
+    /// jXX <label>; (ctrl, flags) -> (ctrl)
+    JMP(Condition, String),
+
     /// ret; (ctrl, value) -> ()
     /// NOTE: the x86_64 ret instruction does not actually take any arguments, but we do take an argument here to ensure it is not eliminated by DCE
     RET,
@@ -390,9 +477,12 @@ impl Opcode {
             Opcode::MOV_STORE => "mov",
             Opcode::ADD => "add",
             Opcode::SUB => "sub",
+            Opcode::TEST => "test",
             Opcode::RET => "ret",
             Opcode::PUSH => "push",
             Opcode::POP => "pop",
+
+            Opcode::JMP(condition, _) => jmp_name_for_condition(*condition),
         }
     }
 }
@@ -411,8 +501,10 @@ impl isa::NativeOpcode for Opcode {
             Opcode::MOV       |
             Opcode::MOV_LOAD  |
             Opcode::MOV_STORE |
+            Opcode::TEST      |
             Opcode::PUSH      |
             Opcode::POP       |
+            Opcode::JMP(_, _) |
             Opcode::RET       => None,
         }   
     }
@@ -428,17 +520,21 @@ impl Display for Opcode {
             Opcode::POP => write!(f, "POP"),
             Opcode::ADD => write!(f, "ADD"),
             Opcode::SUB => write!(f, "SUB"),
+            Opcode::TEST => write!(f, "TEST"),
             Opcode::RET => write!(f, "RET"),
+
+            Opcode::JMP(condition, label) => write!(f, "{} {}", jmp_name_for_condition(*condition).to_uppercase(), label),
         }
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Operand {
     Immediate(u64),
     Register(Register),
     MemReg(Register),
     MemBaseOffset(Register, i32),
+    Label(String),
 }
 
 impl Operand {
@@ -454,11 +550,12 @@ impl Operand {
                     format!("[{} - {}]", base.to_string(Type::QWord), Type::DWord.print_unsigned_in_hex((-*offset) as u64))
                 }
             }
+            Operand::Label(label) => label.clone(),
         }
     }
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Instruction {
     opcode: Opcode,
     operands: [Option<(Operand,Type)>; 2],
@@ -492,11 +589,11 @@ impl isa::NativeInstruction for Instruction {}
 impl Display for Instruction {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{}", self.opcode.asm_name())?;
-        if let Some((lhs, ty)) = self.operands[0] {
-            write!(f, " {}", lhs.to_string(ty))?;
+        if let Some((lhs, ty)) = &self.operands[0] {
+            write!(f, " {}", lhs.to_string(*ty))?;
         }
-        if let Some((rhs, ty)) = self.operands[1] {
-            write!(f, ", {}", rhs.to_string(ty))?;
+        if let Some((rhs, ty)) = &self.operands[1] {
+            write!(f, ", {}", rhs.to_string(*ty))?;
         }
         Ok(())
     }
@@ -599,6 +696,9 @@ impl Register {
                 Register::R14 => "r14".to_string(),
                 Register::R15 => "r15".to_string(),
             }
+
+            Type::Flags |
+            Type::Label => panic!("Register name for FLAGS or LABEL type requested"),
         }
     }
 }
@@ -615,6 +715,9 @@ pub enum Type {
     Word,
     DWord,
     QWord,
+
+    Flags,
+    Label,
 }
 
 impl Type {
@@ -624,6 +727,9 @@ impl Type {
             Type::Word => format!("0x{:04x}", value),
             Type::DWord => format!("0x{:08x}", value),
             Type::QWord => format!("0x{:016x}", value),
+
+            Type::Flags |
+            Type::Label => panic!("Cannot print flags or label as hex value"),
         }
     }
 }
@@ -635,6 +741,18 @@ impl isa::NativeType for Type {
             Type::Word => 2,
             Type::DWord => 4,
             Type::QWord => 8,
+
+            Type::Flags |
+            Type::Label => panic!("Asking for size of flags or label type is... questionable"),
+        }
+    }
+
+    fn is_register_type(&self) -> bool {
+        match self {
+            Type::Flags |
+            Type::Label => false,
+
+            _ => true,
         }
     }
 }
@@ -646,6 +764,15 @@ impl Display for Type {
             Type::Word => write!(f, "word"),
             Type::DWord => write!(f, "dword"),
             Type::QWord => write!(f, "qword"),
+            Type::Flags => write!(f, "FLAGS"),
+            Type::Label => write!(f, "LABEL"),
         }
+    }
+}
+
+fn jmp_name_for_condition(condition: Condition) -> &'static str {
+    match condition {
+        Condition::Always => "jmp",
+        Condition::Zero => "jz",
     }
 }

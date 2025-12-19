@@ -12,16 +12,19 @@ use std::collections::{
 use std::cmp::Ordering;
 
 pub fn codegen_function<I: ISA>(function: &ir::Function, isa: I, debug_dump: bool) -> Option<NativeFunction> {
-    let mut lines = Vec::new();
-    for bb in function.basic_blocks.iter() {
+    let mut bbs = Vec::new();
+    let mut register_allocation_state = RegisterAllocationState::new();
+
+    for bb in function.get_basic_blocks().rev() {
         if debug_dump {
             println!("Codegen for basic block: {}", bb.name());
         }
-        let bb_lines = codegen_basic_block(function, bb, &isa, debug_dump);
+        let bb_lines = codegen_basic_block(function, bb, &isa, debug_dump, &mut register_allocation_state);
         match bb_lines {
-            Some(bb_lines) => {
-                lines.push(format!("{}:", bb.name()));
-                lines.extend(bb_lines.into_iter().map(|line| format!("  {}", line)));
+            Some(mut bb_lines) => {
+                bb_lines.iter_mut().for_each(|line| *line = format!("  {}", line));
+                bb_lines.insert(0, format!("{}:", bb.name()));
+                bbs.push(bb_lines);
             }
             None => {
                 return None;
@@ -32,14 +35,16 @@ pub fn codegen_function<I: ISA>(function: &ir::Function, isa: I, debug_dump: boo
             println!("\n\n\n");
         }
     }
+
+    let lines = bbs.into_iter().rev().flatten().collect();
     
     Some(NativeFunction {
-        name: function.name.clone(),
+        name: function.name().to_string(),
         lines,
     })
 }
 
-pub fn codegen_basic_block<I: ISA>(function: &ir::Function, bb: &ir::BasicBlock, isa: &I, debug_dump: bool) -> Option<Vec<String>> {
+pub fn codegen_basic_block<I: ISA>(function: &ir::Function, bb: &ir::BasicBlock, isa: &I, debug_dump: bool, register_allocation_state: &mut RegisterAllocationState<I>) -> Option<Vec<String>> {
     let IRLoweringResult { mut dag } = lower_basic_block(function, bb, isa);
 
     if debug_dump {
@@ -57,12 +62,12 @@ pub fn codegen_basic_block<I: ISA>(function: &ir::Function, bb: &ir::BasicBlock,
         }
         isa.select_instruction(&mut dag, *node_id);
     }
-
+    
     if debug_dump {
         println!("Final DAG:");
         dump_graph(&dag);
     }
-
+    
     let mut schedule = schedule(&dag);
     if debug_dump {
         println!("Scheduled instructions:");
@@ -71,7 +76,7 @@ pub fn codegen_basic_block<I: ISA>(function: &ir::Function, bb: &ir::BasicBlock,
         }
     }
 
-    let register_allocation = allocate_registers(&mut dag, &mut schedule, &isa);
+    let register_allocation = allocate_registers(register_allocation_state, bb.name(), &mut dag, &mut schedule, &isa);
     if debug_dump {
         println!("Register allocation:");
         for (value, reg) in register_allocation.value_map.iter() {
@@ -79,7 +84,7 @@ pub fn codegen_basic_block<I: ISA>(function: &ir::Function, bb: &ir::BasicBlock,
         }
     }
 
-    let native_instructions: Vec<_> = schedule.iter()
+    let mut native_instructions: Vec<_> = schedule.iter()
         .filter_map(|node| {
             let instruction = dag.get(*node);
             if instruction.is_generic() {
@@ -92,16 +97,17 @@ pub fn codegen_basic_block<I: ISA>(function: &ir::Function, bb: &ir::BasicBlock,
             Some(native_instruction.unwrap())
         })
         .collect();
-    let mut native_instructions: Vec<_> = isa
-        .generate_prologue()
-        .into_iter()
-        .chain(native_instructions.into_iter())
-        .collect();
-    // NOTE: we should insert the epilogue before ret
-    native_instructions.splice(
-        native_instructions.len() - 1..native_instructions.len() - 1,
-         isa.generate_epilogue().into_iter()
-    );
+
+    if function.is_entry_bb(bb) {
+        native_instructions.splice(0..0, isa.generate_prologue().into_iter());
+    }
+
+    if function.is_terminating_bb(bb) {
+        native_instructions.splice(
+            native_instructions.len() - 1..native_instructions.len() - 1,
+             isa.generate_epilogue().into_iter()
+        );
+    }
     if debug_dump {
         println!("Native instructions:");
         for instruction in native_instructions.iter() {
@@ -186,7 +192,8 @@ fn does_node_need_selection<I: ISA>(dag: &DAG<I>, node: NodeId) -> bool {
         Opcode::Generic(opcode) => match opcode {
             GenericOpcode::Enter        |
             GenericOpcode::Constant(..) |
-            GenericOpcode::Register(..) => false,
+            GenericOpcode::Register(..) |
+            GenericOpcode::Phi(..)      => false,
 
             _ => true,
         }

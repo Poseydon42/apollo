@@ -60,6 +60,8 @@ impl <'a, I: ISA> IRLowering<'a, I> {
 
     fn lower_instruction(&mut self, instruction: &ir::Instruction, value: Option<ir::Value>) {
         match instruction {
+            ir::Instruction::Const(c) => self.lower_constant(value.unwrap(), c),
+
             ir::Instruction::Add(lhs, rhs) => self.lower_arithmetic(GenericOpcode::Add, value.unwrap(), lhs, rhs),
             ir::Instruction::Sub(lhs, rhs) => self.lower_arithmetic(GenericOpcode::Sub, value.unwrap(), lhs, rhs),
 
@@ -73,6 +75,11 @@ impl <'a, I: ISA> IRLowering<'a, I> {
             ir::Instruction::Branch{ condition, then_bb, else_bb } => self.lower_branch(condition, then_bb, else_bb),
             ir::Instruction::Return(value) => self.lower_return(value),
         }
+    }
+
+    fn lower_constant(&mut self, ir_value: ir::Value, constant: &ir::Constant) {
+        let value = self.get_constant(constant.clone());
+        self.set_lowered_value(ir_value, value);
     }
 
     fn lower_arithmetic(&mut self, opcode: GenericOpcode<I>, ir_value: ir::Value, lhs: &ir::Value, rhs: &ir::Value) {
@@ -214,25 +221,17 @@ impl <'a, I: ISA> IRLowering<'a, I> {
         self.terminator_node = Some(ret);
     }
 
-    fn get_lowered_value(&mut self, value: &ir::Value) -> Value {
-        match value {
-            ir::Value::Constant(c) => self.get_constant(c.clone()),
-            ir::Value::Instruction(instruction_ref, name) => {
-                if let Some(lowered_value) = self.lowered_values.get(instruction_ref) {
-                    lowered_value.clone()
-                } else {
-                    panic!("Lowered value for IR value %{} not found", name);
-                }
-            }
+    fn get_lowered_value(&mut self, ir_value: &ir::Value) -> Value {
+        if let Some(lowered_value) = self.lowered_values.get(&ir_value.instruction_ref()) {
+            lowered_value.clone()
+        } else {
+            panic!("Lowered value for IR value %{} not found", ir_value.name());
         }
     }
 
     fn set_lowered_value(&mut self, ir_value: ir::Value, lowered_value: Value) {
-        let (instruction_ref, name) = match ir_value {
-            ir::Value::Instruction(instruction_ref, name) => (instruction_ref, name),
-            _ => panic!("Cannot set lowered value for non-instruction value"),
-        };
-        assert!(!self.lowered_values.contains_key(&instruction_ref), "Lowered value for IR value %{} already exists", name);
+        let instruction_ref = ir_value.instruction_ref();
+        assert!(!self.lowered_values.contains_key(&instruction_ref), "Lowered value for IR value %{} already exists", ir_value.name());
         self.lowered_values.insert(instruction_ref, lowered_value);
     }
 

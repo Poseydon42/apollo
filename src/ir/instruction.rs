@@ -1,4 +1,5 @@
 use super::{
+    Constant,
     Function,
     Ty,
     Value
@@ -7,6 +8,8 @@ use std::fmt::*;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Instruction {
+    Const(Constant),
+
     Add(Value, Value),
     Sub(Value, Value),
 
@@ -24,6 +27,8 @@ pub enum Instruction {
 impl Instruction {
     pub fn operands(&self) -> Vec<&Value> {
         match self {
+            Self::Const(_) => vec![],
+
             Self::Add(lhs, rhs) |
             Self::Sub(lhs, rhs) => vec![lhs, rhs],
 
@@ -41,6 +46,8 @@ impl Instruction {
 
     pub fn ty<'a>(&'a self, function: &'a Function) -> Option<Ty> {
         match self {
+            Self::Const(constant) => Some(constant.ty().clone()),
+
             Self::Add(lhs, rhs) |
             Self::Sub(lhs, rhs) => {
                 assert_eq!(lhs.ty(function), rhs.ty(function), "Operands of an arithmetic operation must have the same type");
@@ -74,6 +81,8 @@ impl Instruction {
 impl Display for Instruction {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
+            Self::Const(c) => write!(f, "const {}", c),
+
             Self::Add(lhs, rhs) => write!(f, "add {}, {}", lhs, rhs),
             Self::Sub(lhs, rhs) => write!(f, "sub {}, {}", lhs, rhs),
 

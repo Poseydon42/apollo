@@ -60,6 +60,11 @@ impl IRGenerator {
         let bb = &function_context.current_bb;
         function_context.function.append_named_instruction(bb, instruction, name)
     }
+
+    fn create_constant(&mut self, constant: ir::Constant) -> ir::Value {
+        let const_instruction = ir::Instruction::Const(constant);
+        self.append_instruction(const_instruction).1.expect("Constant instruction must produce a value")
+    }
 }
 
 impl Visitor<'_, Option<ir::Value>> for IRGenerator {
@@ -121,13 +126,13 @@ impl Visitor<'_, Option<ir::Value>> for IRGenerator {
         // FIXME: this is so, so bad. We should use some sort of binary representation of an
         //        "abstract typed value" instead of relying on Rust's integer parsing functionality
         let value: i32 = expr.raw_value.text().parse().expect("Value of an integer literal must be a valid 32 bit signed integer");
-        let value = ir::Value::constant(ir::Constant::int(value));
-        Some(value)
+        let value = ir::Constant::int(value);
+        Some(self.create_constant(value))
     }
 
     fn visit_boolean_literal(&mut self, expr: &'_ ast::BooleanLiteral, _node: &'_ ast::Expr) -> Option<ir::Value> {
-        let value = ir::Value::constant(ir::Constant::bool(expr.value));
-        Some(value)
+        let value = ir::Constant::bool(expr.value);
+        Some(self.create_constant(value))
     }
 
     fn visit_variable_reference(&mut self, expr: &'_ VariableReference, _node: &'_ Expr) -> Option<ir::Value> {

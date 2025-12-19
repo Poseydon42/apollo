@@ -97,10 +97,8 @@ impl Function {
             for instr_ref in bb.instructions() {
                 let instr = self.get_instruction(*instr_ref);
                 for operand in instr.operands() {
-                    if let Value::Instruction(ref_instr_ref, _) = operand {
-                        if *ref_instr_ref == instruction {
-                            return true;
-                        }
+                    if operand.instruction_ref() == instruction {
+                        return true;
                     }
                 }
             }
@@ -131,7 +129,7 @@ impl Function {
         self.basic_blocks.get_full_mut2(bb).unwrap().1.append_instruction(InstructionRef(instruction_ref));
         let value = match produces_value {
             true => {
-                let value = Value::Instruction(InstructionRef(instruction_ref), name);
+                let value = Value::new(InstructionRef(instruction_ref), name);
                 self.values.insert(InstructionRef(instruction_ref), value.clone());
                 Some(value)
             }

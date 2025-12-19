@@ -224,6 +224,17 @@ impl <'a, I: ISA> IRLowering<'a, I> {
     fn get_lowered_value(&mut self, ir_value: &ir::Value) -> Value {
         if let Some(lowered_value) = self.lowered_values.get(&ir_value.instruction_ref()) {
             lowered_value.clone()
+        } else if self.function.get_basic_block_of_instruction(ir_value.instruction_ref()) != self.bb {
+            // If this value is produced in another BB we can insert a phi node with one input to access it
+            let incoming_bb_name = self.function.get_basic_block_of_instruction(ir_value.instruction_ref()).name().to_string();
+            let ty = self.isa.lower_type(&ir_value.ty(self.function));
+            
+            let phi = GenericOpcode::Phi(vec![ (ir_value.clone(), incoming_bb_name) ]);
+            let phi = self.dag.add_generic_node(phi, vec![], vec![ OutputType::Native(ty) ]);
+            
+            let value = self.dag.get_value(phi, 0);
+            self.set_lowered_value(ir_value.clone(), value);
+            value
         } else {
             panic!("Lowered value for IR value %{} not found", ir_value.name());
         }

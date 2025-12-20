@@ -1,7 +1,6 @@
 mod basic_block;
 mod constant;
 mod function;
-mod instruction_list;
 mod instruction;
 mod module;
 mod ty;

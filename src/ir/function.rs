@@ -46,12 +46,12 @@ impl Function {
         &self.instructions[instruction_ref.0]
     }
 
-    pub fn get_instructions_in_basic_block(&self, bb: &str) -> impl Iterator<Item = (InstructionRef, &Instruction)> {
+    pub fn get_instructions_in_basic_block(&self, bb: &str) -> impl DoubleEndedIterator<Item = (InstructionRef, &Instruction)> {
         self.basic_blocks
             .get(bb)
             .unwrap()
             .instructions()
-            .map(| instruction_ref| (*instruction_ref, self.get_instruction(*instruction_ref)))
+            .map(|instruction_ref| (*instruction_ref, self.get_instruction(*instruction_ref)))
     }
 
     pub fn get_value(&self, instruction_ref: InstructionRef) -> Option<Value> {

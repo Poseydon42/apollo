@@ -1,6 +1,6 @@
+use index_list::IndexList;
 use super::{
     InstructionRef,
-    instruction_list::InstructionList,
 };
 use std::borrow::Borrow;
 use std::hash::{
@@ -11,14 +11,14 @@ use std::hash::{
 #[derive(Debug)]
 pub struct BasicBlock {
     name: String,
-    instructions: InstructionList,    
+    instructions: IndexList<InstructionRef>,
 }
 
 impl BasicBlock {
     pub fn new(name: String) -> Self {
         Self {
             name,
-            instructions: InstructionList::new(),
+            instructions: IndexList::new(),
         }
     }
 
@@ -26,12 +26,12 @@ impl BasicBlock {
         &self.name
     }
 
-    pub fn instructions(&self) -> impl Iterator<Item = &InstructionRef> {
-        self.instructions.instructions()
+    pub fn instructions(&self) -> impl DoubleEndedIterator<Item = &InstructionRef> {
+        self.instructions.iter()
     }
 
     pub fn append_instruction(&mut self, instruction_ref: InstructionRef) {
-        self.instructions.append(instruction_ref);
+        self.instructions.insert_last(instruction_ref);
     }
 }
 
@@ -54,3 +54,4 @@ impl Borrow<str> for BasicBlock {
         &self.name
     }
 }
+

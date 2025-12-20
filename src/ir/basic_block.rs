@@ -33,6 +33,12 @@ impl BasicBlock {
     pub fn append_instruction(&mut self, instruction_ref: InstructionRef) {
         self.instructions.insert_last(instruction_ref);
     }
+
+    pub fn remove_instruction(&mut self, instruction_ref: InstructionRef) {
+        let index = self.instructions.index_of(instruction_ref);
+        assert!(index.is_some(), "Trying to remove a non-existent instruction from basic block");
+        self.instructions.remove(index);
+    }
 }
 
 impl PartialEq for BasicBlock {

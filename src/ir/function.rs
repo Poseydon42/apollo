@@ -46,6 +46,10 @@ impl Function {
         &self.instructions[instruction_ref.0]
     }
 
+    pub fn get_instruction_mut(&mut self, instruction_ref: InstructionRef) -> &mut Instruction {
+        &mut self.instructions[instruction_ref.0]
+    }
+
     pub fn get_instructions_in_basic_block(&self, bb: &str) -> impl DoubleEndedIterator<Item = (InstructionRef, &Instruction)> {
         self.basic_blocks
             .get(bb)
@@ -62,6 +66,14 @@ impl Function {
         self.basic_blocks.iter()
     }
 
+    pub fn get_basic_block_names(&self) -> impl DoubleEndedIterator<Item = &str> {
+        self.basic_blocks.iter().map(|bb| bb.name())
+    }
+
+    pub fn get_owned_basic_block_names(&self) -> impl DoubleEndedIterator<Item = String> {
+        self.get_basic_block_names().map(|name| name.to_string())
+    }
+
     pub fn get_basic_block_of_instruction(&self, instruction: InstructionRef) -> &BasicBlock {
         for bb in self.get_basic_blocks() {
             if bb.instructions().any(|instr_ref| *instr_ref == instruction) {
@@ -69,6 +81,19 @@ impl Function {
             }
         }
         panic!("Instruction {:?} does not belong to any basic block", instruction);
+    }
+
+    pub fn get_value_users(&self, value: &Value) -> impl Iterator<Item = InstructionRef> {
+        self.instructions
+            .iter()
+            .enumerate()
+            .filter_map(move |(instr_ref, instr)| {
+                if instr.operands().contains(&value) {
+                    Some(InstructionRef(instr_ref))
+                } else {
+                    None
+                }
+            })
     }
 
     pub fn is_entry_bb(&self, bb: &BasicBlock) -> bool {
@@ -136,5 +161,16 @@ impl Function {
             false => None,
         };
         (InstructionRef(instruction_ref), value)
+    }
+
+    pub fn remove_instruction(&mut self, instruction_ref: InstructionRef) {
+        // Remove from basic block
+        let bb = self.get_basic_block_of_instruction(instruction_ref).name().to_string();
+        self.basic_blocks.get_full_mut2(bb.as_str()).unwrap().1.remove_instruction(instruction_ref);
+
+        // Remove from values map
+        self.values.remove(&instruction_ref);
+
+        // Note: we do not remove the instruction from the instructions vector to keep InstructionRef valid
     }
 }

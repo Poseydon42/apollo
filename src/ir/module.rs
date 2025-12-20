@@ -18,4 +18,8 @@ impl Module {
     pub fn functions(&self) -> &[Function] {
         &self.functions
     }
+
+    pub fn functions_mut(&mut self) -> &mut [Function] {
+        &mut self.functions
+    }
 }

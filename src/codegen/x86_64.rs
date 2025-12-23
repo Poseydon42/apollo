@@ -144,7 +144,7 @@ impl isa::ISA for ISA {
                 let ty = dag.get_value_type(instruction.get_input(0)).get_native();
                 let lhs = register_allocation.value_map
                     .get(&instruction.get_input(0))
-                    .expect("LHS register for ADD/SUB should have been allocated");
+                    .expect(&format!("LHS register for {} should have been allocated", instruction.opcode()));
                 let lhs = Operand::Register(*lhs);
                 let rhs = if dag.get(instruction.get_input(1).node()).opcode().is_constant() {
                     let value = dag.get(instruction.get_input(1).node()).opcode().get_constant();
@@ -152,7 +152,7 @@ impl isa::ISA for ISA {
                 } else {
                     let rhs = register_allocation.value_map
                         .get(&instruction.get_input(1))
-                        .expect("RHS register for ADD/SUB should have been allocated");
+                        .expect(&format!("RHS register for {} should have been allocated", instruction.opcode()));
                     Operand::Register(*rhs)
                 };
                 Instruction::two_args(

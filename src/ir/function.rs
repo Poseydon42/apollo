@@ -58,8 +58,21 @@ impl Function {
             .map(|instruction_ref| (*instruction_ref, self.get_instruction(*instruction_ref)))
     }
 
+    pub fn get_terminator_of_basic_block(&self, bb: &str) -> InstructionRef {
+        let bb = self.basic_blocks.get(bb).unwrap();
+        *bb.instructions().last().expect("Basic block has no instructions")
+    }
+
     pub fn get_value(&self, instruction_ref: InstructionRef) -> Option<Value> {
         self.values.get(&instruction_ref).cloned()
+    }
+
+    pub fn get_basic_block(&self, bb: &str) -> &BasicBlock {
+        self.basic_blocks.get(bb).unwrap()
+    }
+
+    pub fn get_entry_basic_block(&self) -> &BasicBlock {
+        self.get_basic_block(self.name())
     }
 
     pub fn get_basic_blocks(&self) -> impl DoubleEndedIterator<Item = &BasicBlock> {
@@ -70,8 +83,8 @@ impl Function {
         self.basic_blocks.iter().map(|bb| bb.name())
     }
 
-    pub fn get_owned_basic_block_names(&self) -> impl DoubleEndedIterator<Item = String> {
-        self.get_basic_block_names().map(|name| name.to_string())
+    pub fn get_owned_basic_block_names(&self) -> Vec<String> {
+        self.basic_blocks.iter().map(|bb| bb.name().to_string()).collect()
     }
 
     pub fn get_basic_block_of_instruction(&self, instruction: InstructionRef) -> &BasicBlock {
@@ -110,6 +123,16 @@ impl Function {
                 matches!(instruction, Instruction::Return(..))
             }
             None => false,
+        }
+    }
+
+    pub fn get_direct_descendants(&self, bb: &str) -> Vec<&str> {
+        let terminator = self.get_terminator_of_basic_block(bb);
+        match self.get_instruction(terminator) {
+            Instruction::Jump(target) => vec![target.as_str()],
+            Instruction::Branch { then_bb, else_bb, .. } => vec![then_bb.as_str(), else_bb.as_str()],
+            
+            _ => vec![],
         }
     }
 
@@ -170,7 +193,18 @@ impl Function {
 
         // Remove from values map
         self.values.remove(&instruction_ref);
+    }
 
-        // Note: we do not remove the instruction from the instructions vector to keep InstructionRef valid
+    pub fn remove_basic_block(&mut self, bb_name: &str) {
+        assert!(self.basic_blocks.contains(bb_name), "Trying to remove non-existent basic block '{}'", bb_name);
+
+        let instructions: Vec<_> = self.basic_blocks.get(bb_name).unwrap().instructions().cloned().collect();
+        for instruction_ref in &instructions {
+            self.remove_instruction(*instruction_ref);
+        }
+
+        self.basic_blocks.remove(bb_name);
+
+        // FIXME: should we deal with updating jumps to this BB, as well as removing/updating values that reference instructions in this BB?
     }
 }

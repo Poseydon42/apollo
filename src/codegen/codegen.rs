@@ -191,14 +191,22 @@ fn does_node_need_selection<I: ISA>(dag: &DAG<I>, node: NodeId) -> bool {
     match dag.get(node).opcode() {
         Opcode::Generic(opcode) => match opcode {
             GenericOpcode::Enter        |
-            GenericOpcode::Constant(..) |
             GenericOpcode::Register(..) |
             GenericOpcode::Phi(..)      => false,
+
+            GenericOpcode::Constant(..) => does_constant_need_selection(dag, node),
 
             _ => true,
         }
         Opcode::Native(_) => false,
     }
+}
+
+fn does_constant_need_selection<I: ISA>(dag: &DAG<I>, node: NodeId) -> bool {
+    // NOTE: constants that are used by the BB terminator are considered to be "leaked" to other BBs,
+    //       so we should materalize them into a register.
+    // FIXME: maybe we should handle the case of return instruction differently?
+    dag.uses(dag.get_value(node, 0)).any(|(use_node, _)| dag.root() == Some(*use_node))
 }
 
 fn dump_graph<I: ISA>(dag: &DAG<I>) {

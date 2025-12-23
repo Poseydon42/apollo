@@ -39,8 +39,9 @@ impl isa::ISA for ISA {
         #[allow(unreachable_patterns)]
         match node.opcode().get_generic() {
             GenericOpcode::Enter        |
-            GenericOpcode::Constant(..) |
             GenericOpcode::Register(..) => panic!("Special generic node {} should not be a target for instruction selection", node.opcode().get_generic()),
+
+            GenericOpcode::Constant(..) => self.lower_constant(dag, instruction),
 
             GenericOpcode::Add |
             GenericOpcode::Sub => self.lower_simple_arithmetic(dag, instruction),
@@ -203,6 +204,15 @@ impl isa::ISA for ISA {
 }
 
 impl ISA {
+    fn lower_constant(&self, dag: &mut DAG<Self>, instruction: NodeId) {
+        let constant_load = dag.add_native_node(
+            Opcode::MOV,
+            vec![dag.get_value(instruction, 0)],
+            vec![OutputType::Native(dag.get(instruction).get_output_type(0).get_native().clone())],
+        );
+        dag.replace_node(instruction, constant_load);
+    }
+
     fn lower_simple_arithmetic(&self, dag: &mut DAG<Self>, instruction: NodeId) {
         // NOTE: if the LHS is a constant, we need to move it into a register first
         // NOTE: this should technically never happen once we actually implement optimizations (constant folding and moving constants to the right)

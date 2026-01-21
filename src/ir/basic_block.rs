@@ -34,6 +34,20 @@ impl BasicBlock {
         self.instructions.insert_last(instruction_ref);
     }
 
+    pub fn insert_instruction(&mut self, insturction_ref: InstructionRef, after: Option<InstructionRef>) {
+        match after {
+            Some(after) => {
+                let index = self.instructions.index_of(after);
+                assert!(index.is_some(), "Trying to insert instruction after a non-existent instruction in basic block");
+                self.instructions.insert_after(index, insturction_ref);
+            }
+
+            None => {
+                self.instructions.insert_first(insturction_ref);
+            }
+        }
+    }
+
     pub fn remove_instruction(&mut self, instruction_ref: InstructionRef) {
         let index = self.instructions.index_of(instruction_ref);
         assert!(index.is_some(), "Trying to remove a non-existent instruction from basic block");

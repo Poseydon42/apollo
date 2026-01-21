@@ -44,6 +44,56 @@ impl Instruction {
         }
     }
 
+    pub fn replace_operand(&self, old: &Value, new: &Value) -> Instruction {
+        match self {
+            Self::Const(c) => Self::Const(c.clone()),
+
+            Self::Add(lhs, rhs) => Self::Add(
+                if lhs == old { new.clone() } else { lhs.clone() },
+                if rhs == old { new.clone() } else { rhs.clone() },
+            ),
+
+            Self::Sub(lhs, rhs) => Self::Sub(
+                if lhs == old { new.clone() } else { lhs.clone() },
+                if rhs == old { new.clone() } else { rhs.clone() },
+            ),
+
+            Self::Allocate(ty) => Self::Allocate(ty.clone()),
+            Self::Load { location, ty } => Self::Load {
+                location: if location == old { new.clone() } else { location.clone() },
+                ty: ty.clone(),
+            },
+            Self::Store { value, location } => Self::Store {
+                value: if value == old { new.clone() } else { value.clone() },
+                location: if location == old { new.clone() } else { location.clone() },
+            },
+
+            Self::Phi { incoming, ty } => {
+                let new_incoming: Vec<_> = incoming
+                    .iter()
+                    .map(|(value, bb_name)| {
+                        let new_value = if value == old { new.clone() } else { value.clone() };
+                        (new_value, bb_name.clone())
+                    })
+                    .collect();
+                Self::Phi {
+                    incoming: new_incoming,
+                    ty: ty.clone(),
+                }
+            }
+
+            Self::Jump(label) => Self::Jump(label.clone()),
+            Self::Branch { condition, then_bb, else_bb } => Self::Branch {
+                condition: if condition == old { new.clone() } else { condition.clone() },
+                then_bb: then_bb.clone(),
+                else_bb: else_bb.clone(),
+            },
+            Self::Return(value) => Self::Return(
+                if value == old { new.clone() } else { value.clone() }
+            ),
+        }
+    }
+
     pub fn ty<'a>(&'a self, function: &'a Function) -> Option<Ty> {
         match self {
             Self::Const(constant) => Some(constant.ty().clone()),
@@ -74,6 +124,29 @@ impl Instruction {
             Self::Return(..) => false,
 
             _ => true,
+        }
+    }
+
+    pub fn is_phi(&self) -> bool {
+        matches!(self, Self::Phi { .. })
+    }
+
+    pub fn is_control_flow(&self) -> bool {
+        match self {
+            Self::Jump(..)   |
+            Self::Branch{..} |
+            Self::Return(..) => true,
+
+            _ => false,
+        }
+    }
+
+    pub fn target_basic_blocks(&self) -> Vec<&str> {
+        match self {
+            Self::Jump(label) => vec![label.as_str()],
+            Self::Branch { then_bb, else_bb, .. } => vec![then_bb.as_str(), else_bb.as_str()],
+            Self::Return(..) => vec![],
+            _ => panic!("This instruction does not jump to any basic blocks"),
         }
     }
 }

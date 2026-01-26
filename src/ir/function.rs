@@ -109,13 +109,20 @@ impl Function {
         self.basic_blocks.iter().map(|bb| bb.name().to_string()).collect()
     }
 
-    pub fn get_basic_block_of_instruction(&self, instruction: InstructionRef) -> &BasicBlock {
+    pub fn try_get_basic_block_of_instruction(&self, instruction: InstructionRef) -> Option<&BasicBlock> {
         for bb in self.get_basic_blocks() {
             if bb.instructions().any(|instr_ref| *instr_ref == instruction) {
-                return bb;
+                return Some(bb);
             }
         }
-        panic!("Instruction {:?} does not belong to any basic block", instruction);
+        None
+    }
+
+    pub fn get_basic_block_of_instruction(&self, instruction: InstructionRef) -> &BasicBlock {
+        match self.try_get_basic_block_of_instruction(instruction) {
+            Some(bb) => bb,
+            None => panic!("Instruction {} does not belong to any basic block", self.get_instruction(instruction))
+        }
     }
 
     pub fn get_value_users(&self, value: &Value) -> impl Iterator<Item = InstructionRef> {
@@ -123,7 +130,7 @@ impl Function {
             .iter()
             .enumerate()
             .filter_map(move |(instr_ref, instr)| {
-                if instr.operands().contains(&value) {
+                if instr.operands().contains(&value) && self.try_get_basic_block_of_instruction(InstructionRef(instr_ref)).is_some() {
                     Some(InstructionRef(instr_ref))
                 } else {
                     None

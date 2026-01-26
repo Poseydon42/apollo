@@ -46,6 +46,19 @@ impl Function {
         &self.name
     }
 
+    pub fn print(&self) {
+        for bb in self.get_basic_blocks() {
+            println!("{}:", bb.name());
+            for (instruction_ref, instruction) in self.get_instructions_in_basic_block(bb.name()) {
+                if instruction.produces_value() {
+                    println!("  {} = {}", self.get_value(instruction_ref).unwrap(), instruction);
+                } else {
+                    println!("  {}", instruction);
+            }
+            }
+        }
+    }
+
     pub fn get_instruction(&self, instruction_ref: InstructionRef) -> &Instruction {
         &self.instructions[instruction_ref.0]
     }

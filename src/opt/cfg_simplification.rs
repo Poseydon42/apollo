@@ -21,11 +21,10 @@ impl CFGSimplification {
         let instructions_to_move: Vec<_> = function.get_instructions_in_basic_block(first)
             .filter(|(_, instr)| !instr.is_control_flow())
             .map(|(instr_ref, _)| instr_ref)
+            .rev()
             .collect();
-        let mut last_instruction: Option<InstructionRef> = None;
         for instr_ref in instructions_to_move {
-            function.move_instruction(instr_ref, second, last_instruction);
-            last_instruction = Some(instr_ref);
+            function.move_instruction(instr_ref, second, None);
         }
 
         // 2. Redirect predecessors of first to second
@@ -119,11 +118,11 @@ impl CFGSimplification {
         let mut changed = false;
         
         for bb in function.get_owned_basic_block_names() {
-            changed |= self.try_merge(function, &bb);
+            changed |= self.try_remove(function, &bb);
         }
         
         for bb in function.get_owned_basic_block_names() {
-            changed |= self.try_remove(function, &bb);
+            changed |= self.try_merge(function, &bb);
         }
 
         changed

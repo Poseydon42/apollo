@@ -269,7 +269,7 @@ impl Function {
                 let user_bb = self.get_basic_block_of_instruction(user).name();
                 let reachability = self.calculate_reachability(bb, user_bb);
                 match reachability {
-                    Reachability::Unconditional |
+                    Reachability::Unconditional => {},
                     Reachability::Conditional if self.get_instruction(user).is_phi() => {},
 
                     _ => {

@@ -16,7 +16,14 @@ pub trait Visitor<'ast, ReturnType = ()> : Sized where
         }
     }
 
+    fn visit_func_arg(&mut self, _arg: &'ast FunctionArg) -> ReturnType {
+        Default::default()
+    }
+
     fn visit_func_decl(&mut self, func: &'ast FunctionDecl, _node: &'ast Decl) -> ReturnType {
+        for arg in &func.args {
+            self.visit_func_arg(arg);
+        }
         self.visit_expr(&func.body);
         Default::default()
     }
@@ -95,8 +102,15 @@ pub trait MutVisitor<'ast, ReturnType = ()> : Sized
             DeclKind::Variable(variable_decl) => self.visit_variable_decl(variable_decl),
         }
     }
+
+    fn visit_func_arg(&mut self, _arg: &'ast mut FunctionArg) -> ReturnType {
+        Default::default()
+    }
     
     fn visit_func_decl(&mut self, func: &'ast mut FunctionDecl) -> ReturnType {
+        for arg in &mut func.args {
+            self.visit_func_arg(arg);
+        }
         self.visit_expr(&mut func.body);
         Default::default()
     }

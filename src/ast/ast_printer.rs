@@ -39,9 +39,23 @@ macro_rules! increase_indent_and {
 
 #[allow(unused_must_use)]
 impl<'ast, 'writer, W: Write> Visitor<'ast> for ASTPrinter<'writer, W> {
+    fn visit_func_arg(&mut self, arg: &'ast FunctionArg) -> () {
+        writeln_with_ident!(self, "FuncArg @ ({},{}): {} : {}", arg.name.line(), arg.name.column(), arg.name.text(), self.get_type_string(&arg.ty));
+    }
+
     fn visit_func_decl(&mut self, func: &'ast FunctionDecl, node: &'ast Decl) {
         writeln_with_ident!(self, "FuncDecl @ ({},{}): {} -> {}", node.span.line(), node.span.column(), func.name.text(), self.get_type_string(&func.return_ty));
-        increase_indent_and!(self, self.visit_expr(&func.body));
+        increase_indent_and!(self,
+            {
+                writeln_with_ident!(self, "Arguments:");
+                increase_indent_and!(self,
+                    for arg in &func.args {
+                        self.visit_func_arg(arg);
+                    }
+                );
+                self.visit_expr(&func.body)
+            }
+        );
     }
 
     fn visit_variable_decl(&mut self, variable: &'ast VariableDecl, node: &'ast Decl) {

@@ -39,8 +39,15 @@ pub enum DeclKind {
 pub type Decl = Node<DeclKind>;
 
 #[derive(Debug)]
+pub struct FunctionArg {
+    pub name: Span,
+    pub ty: Type,
+}
+
+#[derive(Debug)]
 pub struct FunctionDecl {
     pub name: Span,
+    pub args: Vec<FunctionArg>,
     pub return_ty: Type,
     pub body: Expr,
 }

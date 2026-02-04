@@ -4,7 +4,7 @@ use std::collections::HashMap;
 #[derive(Debug)]
 pub struct FunctionContext {
     return_type: ResolvedType,
-    pub explicit_return_guaranteed: bool,
+    explicit_return_guaranteed: bool,
     variables: HashMap<String, ResolvedType>,
 }
 
@@ -19,6 +19,14 @@ impl FunctionContext {
 
     pub fn return_type(&self) -> &ResolvedType {
         &self.return_type
+    }
+
+    pub fn is_explicit_return_guaranteed(&self) -> bool {
+        self.explicit_return_guaranteed
+    }
+
+    pub fn set_explicit_return_guaranteed(&mut self) {
+        self.explicit_return_guaranteed = true;
     }
 
     pub fn add_variable(&mut self, name: String, ty: ResolvedType) {

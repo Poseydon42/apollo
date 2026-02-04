@@ -9,6 +9,7 @@ pub struct IRGenerator {
 
 struct FunctionContext {
     function: ir::Function,
+    args: HashMap<String, ir::Value>,
     variables: HashMap<String, ir::Value>,
     current_bb: String,
     next_if_bb_id: u32,
@@ -73,11 +74,19 @@ impl Visitor<'_, Option<ir::Value>> for IRGenerator {
 
         self.function_context = Some(FunctionContext {
             function: ir::Function::new(func_decl.name.text().to_owned()),
+            args: HashMap::new(),
             variables: HashMap::new(),
             current_bb: String::new(),
             next_if_bb_id: 0,
         });
         self.start_new_bb(func_decl.name.text().to_owned());
+
+        for (index, arg) in func_decl.args.iter().enumerate() {
+            let ty = arg.ty.resolved.as_ref().expect("Function argument types must be resolved before IR generation");
+            let arg_instr = ir::Instruction::Arg { index: index as u32, ty: lower_type(ty) };
+            let arg_value = self.append_named_instruction(arg_instr, arg.name.text().to_owned()).1.unwrap();
+            self.get_function_context_mut().args.insert(arg.name.text().to_owned(), arg_value);
+        }
 
         let return_value = self.visit_expr(&func_decl.body);
         match return_value {
@@ -136,6 +145,9 @@ impl Visitor<'_, Option<ir::Value>> for IRGenerator {
     }
 
     fn visit_variable_reference(&mut self, expr: &'_ VariableReference, _node: &'_ Expr) -> Option<ir::Value> {
+        if let Some(arg) = self.get_function_context().args.get(expr.name.text()) {
+            return Some(arg.clone())
+        }
         let ptr = self
             .get_function_context()
             .variables

@@ -9,9 +9,8 @@ use std::rc::Rc;
 
 fn main() -> Result<(), i32> {
     let src = Rc::new(
-        r"fn main() -> i32 {\
-            let cond: bool = true;\
-            if cond 3 + 3 else 6 + 6\
+        r"fn main(x: i32, y: i32) -> i32 {\
+            if true { x + y } else { x - y }\
         }".to_owned());
 
     let mut lexer = Lexer::new(src);

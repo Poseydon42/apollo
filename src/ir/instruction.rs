@@ -9,6 +9,7 @@ use std::fmt::*;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Instruction {
     Const(Constant),
+    Arg { index: u32, ty: Ty },
 
     Add(Value, Value),
     Sub(Value, Value),
@@ -28,6 +29,7 @@ impl Instruction {
     pub fn operands(&self) -> Vec<&Value> {
         match self {
             Self::Const(_) => vec![],
+            Self::Arg { .. } => vec![],
 
             Self::Add(lhs, rhs) |
             Self::Sub(lhs, rhs) => vec![lhs, rhs],
@@ -47,6 +49,7 @@ impl Instruction {
     pub fn replace_operand(&self, old: &Value, new: &Value) -> Instruction {
         match self {
             Self::Const(c) => Self::Const(c.clone()),
+            Self::Arg { index, ty } => Self::Arg { index: *index, ty: ty.clone() },
 
             Self::Add(lhs, rhs) => Self::Add(
                 if lhs == old { new.clone() } else { lhs.clone() },
@@ -97,6 +100,7 @@ impl Instruction {
     pub fn ty<'a>(&'a self, function: &'a Function) -> Option<Ty> {
         match self {
             Self::Const(constant) => Some(constant.ty().clone()),
+            Self::Arg { ty, .. } => Some(ty.clone()),
 
             Self::Add(lhs, rhs) |
             Self::Sub(lhs, rhs) => {
@@ -155,6 +159,7 @@ impl Display for Instruction {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             Self::Const(c) => write!(f, "const {}", c),
+            Self::Arg { index, ty } => write!(f, "arg #{} as {}", index, ty),
 
             Self::Add(lhs, rhs) => write!(f, "add {}, {}", lhs, rhs),
             Self::Sub(lhs, rhs) => write!(f, "sub {}, {}", lhs, rhs),

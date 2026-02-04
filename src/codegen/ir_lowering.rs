@@ -61,6 +61,7 @@ impl <'a, I: ISA> IRLowering<'a, I> {
     fn lower_instruction(&mut self, instruction: &ir::Instruction, value: Option<ir::Value>) {
         match instruction {
             ir::Instruction::Const(c) => self.lower_constant(value.unwrap(), c),
+            ir::Instruction::Arg { .. } => panic!(),
 
             ir::Instruction::Add(lhs, rhs) => self.lower_arithmetic(GenericOpcode::Add, value.unwrap(), lhs, rhs),
             ir::Instruction::Sub(lhs, rhs) => self.lower_arithmetic(GenericOpcode::Sub, value.unwrap(), lhs, rhs),

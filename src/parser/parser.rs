@@ -148,12 +148,32 @@ impl<'a, R: diagnostic::Reporter> Parser<'a, R> {
         }
     }
 
+    fn parse_function_arg(&mut self) -> Option<FunctionArg> {
+        let name = self.eat(LexemKind::Identifier)?.span.clone();
+        self.eat(LexemKind::Colon)?;
+        let ty = self.parse_ty()?;
+        Some(FunctionArg {
+            name,
+            ty,
+        })
+    }
+
     fn parse_func_decl(&mut self) -> Option<Decl> {
         let start = self.eat(LexemKind::Fn)?.span.clone();
 
         let name = self.eat(LexemKind::Identifier)?.span.clone();
 
         self.eat(LexemKind::LeftParen)?;
+
+        let mut args = vec![];
+        while let Some(arg) = self.parse_function_arg() {
+            args.push(arg);
+            if !self.match_lexem(LexemKind::Comma) {
+                break;
+            }
+            self.eat(LexemKind::Comma)?;
+        }
+
         self.eat(LexemKind::RightParen)?;
 
         self.eat(LexemKind::Arrow)?;
@@ -164,6 +184,7 @@ impl<'a, R: diagnostic::Reporter> Parser<'a, R> {
 
         let func = FunctionDecl {
             name,
+            args,
             return_ty,
             body
         };

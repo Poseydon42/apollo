@@ -21,6 +21,8 @@ pub trait ISA: Sized + PartialEq {
 
     fn insert_register_copy(&self, dag: &mut DAG<Self>, value: Value) -> Value;
 
+    fn get_function_argument_value(&self, dag: &mut DAG<Self>, index: u32, ty: Self::Type) -> Value;
+
     fn build_native_instruction(&self, dag: &DAG<Self>, instruction: &Node<Self>, register_allocation: &RegisterAllocationResult<Self>) -> Option<Self::Instruction>;
 
     fn generate_prologue(&self) -> Vec<Self::Instruction>;

@@ -67,6 +67,20 @@ impl isa::ISA for ISA {
         dag.get_value(copy_node, 0)
     }
 
+    fn get_function_argument_value(&self, dag: &mut DAG<Self>, index: u32, ty: Self::Type) -> Value {
+        let register = match index {
+            0 => Register::RDI,
+            1 => Register::RSI,
+            2 => Register::RDX,
+            3 => Register::RCX,
+            4 => Register::R8,
+            5 => Register::R9,
+            _ => unimplemented!("More than 6 function arguments is not yet supported in x86_64 backend"),
+        };
+        let arg_node = dag.add_generic_node(GenericOpcode::Register(register), vec![], vec![OutputType::Native(ty)]);
+        dag.get_value(arg_node, 0)
+    }
+
     fn build_native_instruction(&self, dag: &DAG<Self>, instruction: &Node<Self>, register_allocation: &RegisterAllocationResult<Self>) -> Option<Self::Instruction> {
         if instruction.is_generic() {
             return None;
